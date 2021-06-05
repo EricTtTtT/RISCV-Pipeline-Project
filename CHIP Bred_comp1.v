@@ -318,14 +318,12 @@
 
 //================= cache ============================
 
+
 //Disscussion
 //1. mem stage 用太多東西，critical path會變大，移到wb stage？(write reg會變comb)
 //2. cache 優化，icache, dcache分開寫
 //3. branch prediction, jalr predction?
 //4. mem read 提前準備好
-//5. cache write buffer
-//6. ICACHE 可把write部分刪掉
-//7. 用gate or 相等表示  test == 2'b01 , !test[1] & test[0]
 
 module RISCV_Pipeline(
 	clk, rst_n, ICACHE_ren, ICACHE_wen, ICACHE_addr, ICACHE_wdata, ICACHE_stall, ICACHE_rdata,
@@ -415,14 +413,14 @@ module RISCV_Pipeline(
 
 	reg ctrl_lw_stall;
 
-	reg ctrl_bj_taken;
+	reg ctrl_b_taken;
 
 	//========= wire & reg ==============
     reg	[2:0]	type;
     reg [31:0]	write_rd_MEM;
 
 	//========= Wire assignment ==========
-    assign inst_IF = (ctrl_bj_taken|ctrl_jalr_ID)? 32'd0:{ICACHE_rdata[7:0],ICACHE_rdata[15:8],ICACHE_rdata[23:16],ICACHE_rdata[31:24]};
+    assign inst_IF = (ctrl_b_taken|ctrl_jalr_ID)? 32'd0:{ICACHE_rdata[7:0],ICACHE_rdata[15:8],ICACHE_rdata[23:16],ICACHE_rdata[31:24]};
 
     assign op = inst_ID[6:0];
     assign rd_ID = inst_ID[11:7];  //rd;
@@ -552,35 +550,29 @@ module RISCV_Pipeline(
 
 		//Dmem_write	(wen, addr, data)
 		DCACHE_wen = ctrl_memwrite_MEM;
-		// case(ctrl_FB) //genaral case，因為sw也有可能forwarded，但tb沒這問題
-		// 	2'b00: wdata_EX = rs2_data_EX; 
-		// 	2'b01: wdata_EX = rd_w_MEM_real; 
-		// 	2'b10: wdata_EX = rd_w_WB; 
-		// 	default:wdata_EX = rs2_data_EX; 
-		// endcase
-		wdata_EX = rs2_data_EX; //這也會過
+		case(ctrl_FB) //genaral case，因為sw也有可能forwarded，但tb沒這問題
+			2'b00: wdata_EX = rs2_data_EX; 
+			2'b01: wdata_EX = rd_w_MEM_real; 
+			2'b10: wdata_EX = rd_w_WB; 
+			default:wdata_EX = rs2_data_EX; 
+		endcase
+		//wdata_EX = rs2_data_EX; //這也會過
 		DCACHE_wdata = {wdata_MEM[7:0],wdata_MEM[15:8],wdata_MEM[23:16],wdata_MEM[31:24]};
-
-		//Icache
-		ICACHE_ren = !ICACHE_stall;
-		ICACHE_wen = 1'b0;
-		ICACHE_wdata = 0;
-		ICACHE_addr = PC[31:2]; 
 
 		//alu
 		case(ctrl_FA)
 			2'b00: alu_in1 = rs1_data_EX;
-			2'b01: alu_in1 = rd_w_MEM;
+			2'b01: alu_in1 = rd_w_MEM_real;
 			2'b10: alu_in1 = rd_w_WB;
 			default: alu_in1 = rs1_data_EX;
 		endcase
+		alu_in2_temp = ctrl_ALUSrc_EX? imme_EX : rs2_data_EX;
 		case(ctrl_FB)
-			2'b00: alu_in2_temp = rs2_data_EX;
-			2'b01: alu_in2_temp = rd_w_MEM_real;
-			2'b10: alu_in2_temp = rd_w_WB;
-			default:alu_in2_temp = rs2_data_EX;
+			2'b00: alu_in2 = alu_in2_temp;
+			2'b01: alu_in2 = rd_w_MEM_real;
+			2'b10: alu_in2 = rd_w_WB;
+			default:alu_in2 = alu_in2_temp;
 		endcase
-		alu_in2 = ctrl_ALUSrc_EX? imme_EX : alu_in2_temp;
 
         case (alu_ctrl_EX)
             4'd0: alu_out_EX = alu_in1 + alu_in2;
@@ -598,39 +590,44 @@ module RISCV_Pipeline(
 		//rd_w為運算後的值
 		rd_w_EX = (ctrl_jal_EX | ctrl_jalr_EX)? PC_EX+4 : alu_out_EX;
 
-		//mem_to_register (write rd)
+		//Icache
+		ICACHE_ren = !ICACHE_stall;
+		ICACHE_wen = 1'b0;
+		ICACHE_wdata = 0;
+
+		//mem_to_register
+		//write rd
+		// write_rd_MEM = (ctrl_jal_MEM|ctrl_jalr_MEM)? PC_MEM+4 : ctrl_memtoreg_MEM? read_data_MEM: alu_out_MEM;
 		write_rd_MEM =  ctrl_memtoreg_MEM? read_data_MEM : rd_w_MEM_real;
 
-	
+		//PC_nxt, branch,jal or jalr or pc+4
+		PC_B_ID = PC_ID + imme_ID;
+		
 		//jalr = rs1 + imme (rs1 forwarded)
 		case(ctrl_FA_j) //實際上只有00,10會成立
 			2'b00: PC_jalr_ID = rs1_data_ID + imme_ID;
-			//2'b01: PC_jalr_ID = rd_w_EX + imme_ID;
-			2'b10: PC_jalr_ID = rd_w_MEM + imme_ID;
+			2'b01: PC_jalr_ID = rd_w_EX + imme_ID;
+			2'b10: PC_jalr_ID = rd_w_MEM_real + imme_ID;
 			default: PC_jalr_ID = rs1_data_ID + imme_ID;
 		endcase
 
 		case(ctrl_FA_j) //實際上只有01
-			//2'b00: compare_rs1 = rs1_data_ID;
+			2'b00: compare_rs1 = rs1_data_ID;
 			2'b01: compare_rs1 = rd_w_EX;
-			//2'b10: compare_rs1 = rd_w_MEM;
+			2'b10: compare_rs1 = rd_w_MEM_real;
 			default: compare_rs1 = rs1_data_ID;
 		endcase
-		// case(ctrl_FB_j) //實際上rs2不需要forwarding
-		// 	2'b00: compare_rs2 = rs2_data_ID;
-		// 	2'b01: compare_rs2 = rd_w_EX;
-		// 	2'b10: compare_rs2 = rd_w_MEM;
-		// 	default: compare_rs2 = rs2_data_ID;
-		// endcase
-		compare_rs2 = rs2_data_ID;
+		case(ctrl_FB_j) //實際上rs2不需要forwarding
+			2'b00: compare_rs2 = rs2_data_ID;
+			2'b01: compare_rs2 = rd_w_EX;
+			2'b10: compare_rs2 = rd_w_MEM_real;
+			default: compare_rs2 = rs2_data_ID;
+		endcase
+		//compare_rs2 = rs2_data_ID;
 
+		ctrl_b_taken = ( ((ctrl_beq_ID & compare_rs1==compare_rs2) | ctrl_bne_ID & (compare_rs1!=compare_rs2)) | ctrl_jal_ID);
 
-		//PC_nxt, branch,jal or jalr or pc+4
-		PC_B_ID = PC_ID + imme_ID;
-
-		ctrl_bj_taken = ( ((ctrl_beq_ID & compare_rs1==compare_rs2) | ctrl_bne_ID & (compare_rs1!=compare_rs2)) | ctrl_jal_ID);
-
-		PC_nxt = ctrl_jalr_ID? PC_jalr_ID : ctrl_bj_taken? PC_B_ID : PC+4; //rs1+imme 或 pc+imme 或 pc+4;
+		PC_nxt = ctrl_jalr_ID? PC_jalr_ID : ctrl_b_taken? PC_B_ID : PC+4; //rs1+imme 或 pc+imme 或 pc+4;
     end
 
 
@@ -671,7 +668,7 @@ module RISCV_Pipeline(
 		end
 
 		//(rs2 at EX)
-		if (ctrl_regwrite_MEM & rd_MEM!=0 & rd_MEM==rs2_EX)begin //& type_EX!=3'd1 若是I-type，不需要用到r2
+		if (ctrl_regwrite_MEM & rd_MEM!=0 & rd_MEM==rs2_EX)begin
 			ctrl_FB = 2'b01;
 		end
 		else if (ctrl_regwrite_WB & rd_WB!=0 & rd_WB==rs2_EX)begin
@@ -741,6 +738,7 @@ module RISCV_Pipeline(
 			PC_EX <= 0;
             PC <= 0;
 
+            ICACHE_addr <= 0;
         end
         else if (!ICACHE_stall & !DCACHE_stall ) begin
             if (ctrl_regwrite_MEM & rd_MEM!=0)begin
@@ -856,12 +854,14 @@ module RISCV_Pipeline(
 				PC_EX <= PC_ID;
 
 				PC <= PC_nxt;
+				ICACHE_addr <= PC_nxt[31:2]; //fect instruction //bits??? PC[31:2]=ICACHE_addr
 			end
 			else begin
 				PC_ID <= PC_ID;
 				PC_EX <= 0;
 
 				PC <= PC;
+				ICACHE_addr <= PC[31:2]; //fect instruction //bits??? PC[31:2]=ICACHE_addr
 			end
         end
 		//============ stall ================
@@ -923,6 +923,7 @@ module RISCV_Pipeline(
 			PC_EX <= PC_EX;
             PC <= PC;
 			
+            ICACHE_addr <= PC[31:2]; //fect instruction //bits??? PC[31:2]=ICACHE_addr
 		end
     end
 

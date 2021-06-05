@@ -144,17 +144,16 @@
 		input clear;
 	//==== wire/reg definition ================================
 
-	parameter STATE_compare_tag = 3'b000;
-	parameter STATE_write_back = 3'b001;
-	parameter STATE_allocate = 3'b010;
-	parameter STATE_idle = 3'b011;
-	parameter STATE_clear = 3'b100;
+	parameter STATE_compare_tag = 2'b00;
+	parameter STATE_write_back = 2'b01;
+	parameter STATE_allocate = 2'b10;
+	parameter STATE_idle = 2'b11;
 
 	integer i;
 
 	reg [154:0] cache [0:7]; // "1" bit valid ,dirty, "25" bits tags, "128" bits data. =152 bits, 8 = 2^3 entries
 	reg [154:0] nxt_cache [0:7]; 
-	reg [2:0] state;
+	reg [1:0] state;
 	reg [1:0] nxt_state;
 	//wire [2:0] blocks; //8 blocks
 	wire dirty;

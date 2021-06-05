@@ -318,14 +318,12 @@
 
 //================= cache ============================
 
+
 //Disscussion
 //1. mem stage 用太多東西，critical path會變大，移到wb stage？(write reg會變comb)
 //2. cache 優化，icache, dcache分開寫
 //3. branch prediction, jalr predction?
 //4. mem read 提前準備好
-//5. cache write buffer
-//6. ICACHE 可把write部分刪掉
-//7. 用gate or 相等表示  test == 2'b01 , !test[1] & test[0]
 
 module RISCV_Pipeline(
 	clk, rst_n, ICACHE_ren, ICACHE_wen, ICACHE_addr, ICACHE_wdata, ICACHE_stall, ICACHE_rdata,
@@ -345,7 +343,8 @@ module RISCV_Pipeline(
     reg [31:0] PC;
 	reg [31:0] PC_nxt;
 	reg [31:0] PC_ID, PC_EX;
-	reg [31:0] PC_B_ID, PC_jalr_ID;
+	reg [31:0] PC_B_ID, PC_B_IF, PC_jalr_ID;
+	reg [31:0] PC_B, PC_B_nxt;
 
 	//========= Registers ========= 
     reg [31:0] register [0:31];
@@ -373,15 +372,16 @@ module RISCV_Pipeline(
 	reg [31:0] compare_rs2;
 
 	//========= Instruction ========= 
-    wire [31:0] inst_IF;
+    reg [31:0] inst_IF;
 	reg [31:0] inst_ID;
+	reg [31:0] inst_B;
+	reg [31:0] inst_B_nxt;
     wire [6:0] op;
     wire [2:0] func3;
     wire [6:0] func7;
 
 	//========= Immediate =========
-    reg [31:0] imme_ID;
-    reg [31:0] imme_EX;
+    reg [31:0] imme_IF, imme_ID, imme_EX;
 
 	//========= alu ========= 
     reg signed [31:0] alu_in1;
@@ -401,9 +401,9 @@ module RISCV_Pipeline(
 
 	//========= Control unit =========
     reg ctrl_jalr_ID,		ctrl_jalr_EX; 	//在EX要計算是否要PC+4
-    reg ctrl_jal_ID,		ctrl_jal_EX; 	//
-    reg ctrl_beq_ID;	//beq 在ID做完就沒事了
-    reg ctrl_bne_ID;	//beq 在ID做完就沒事了
+    reg ctrl_jal_ID,		ctrl_jal_EX; 	
+    reg ctrl_beq_IF, ctrl_beq_ID;	
+    reg ctrl_bne_IF, ctrl_bne_ID;	
     reg ctrl_memread_ID,	ctrl_memread_EX, 	ctrl_memread_MEM;
     reg ctrl_memtoreg_ID,	ctrl_memtoreg_EX, 	ctrl_memtoreg_MEM, 	ctrl_memtoreg_WB;
     reg ctrl_memwrite_ID, 	ctrl_memwrite_EX, 	ctrl_memwrite_MEM; 
@@ -415,15 +415,13 @@ module RISCV_Pipeline(
 
 	reg ctrl_lw_stall;
 
-	reg ctrl_bj_taken;
+	reg ctrl_b_taken;
 
 	//========= wire & reg ==============
     reg	[2:0]	type;
     reg [31:0]	write_rd_MEM;
 
 	//========= Wire assignment ==========
-    assign inst_IF = (ctrl_bj_taken|ctrl_jalr_ID)? 32'd0:{ICACHE_rdata[7:0],ICACHE_rdata[15:8],ICACHE_rdata[23:16],ICACHE_rdata[31:24]};
-
     assign op = inst_ID[6:0];
     assign rd_ID = inst_ID[11:7];  //rd;
     assign rs1_ID = inst_ID[19:15]; //rs1;
@@ -434,6 +432,14 @@ module RISCV_Pipeline(
 	assign rs1_data_ID = register[rs1_ID];
 	assign rs2_data_ID = register[rs2_ID];
 
+
+	//========== state ===========
+	reg [1:0] state, nxt_state;
+	reg taken;
+	parameter state_t1 = 2'b00; //1=strong, 2=weak
+	parameter state_t2 = 2'b01;
+	parameter state_nt2 = 2'b10;
+	parameter state_nt1 = 2'b11;
 
 	//========== type =============
     always @(*)begin
@@ -454,8 +460,8 @@ module RISCV_Pipeline(
         imme_ID = 0;
 		ctrl_jal_ID = 0;
 		ctrl_jalr_ID = 0;
-        ctrl_beq_ID = 0;
-        ctrl_bne_ID = 0;
+        // ctrl_beq_ID = 0;
+        // ctrl_bne_ID = 0;
         ctrl_memread_ID = 0;
         ctrl_memwrite_ID = 0;
         ctrl_memtoreg_ID = 0;
@@ -485,8 +491,8 @@ module RISCV_Pipeline(
         end
 
         3'd3: begin
-            ctrl_beq_ID = !func3[0];
-            ctrl_bne_ID = func3[0];
+            // ctrl_beq_ID = !func3[0];
+            // ctrl_bne_ID = func3[0];
             ctrl_ALUSrc_ID = 1;			
             imme_ID = { {20{inst_ID[31]}}, inst_ID[7], inst_ID[30:25], inst_ID[11:8], 1'b0 }; //beq, bne
         end
@@ -501,8 +507,8 @@ module RISCV_Pipeline(
 			imme_ID = 0;
 			ctrl_jal_ID = 0;
 			ctrl_jalr_ID = 0;
-			ctrl_beq_ID = 0;
-			ctrl_bne_ID = 0;
+			// ctrl_beq_ID = 0;
+			// ctrl_bne_ID = 0;
 			ctrl_memread_ID = 0;
 			ctrl_memwrite_ID = 0;
 			ctrl_memtoreg_ID = 0;
@@ -542,7 +548,6 @@ module RISCV_Pipeline(
     //======== mux & comb ckt ========
     always @(*)begin
 
-		
 		//Dmem_read		(wen, addr, data)
 		DCACHE_ren = ctrl_memread_MEM;
 		DCACHE_addr = (ctrl_memread_MEM|ctrl_memwrite_MEM)? alu_out_MEM[31:2] : 0; //設條件否則會一直輸出addr
@@ -552,20 +557,20 @@ module RISCV_Pipeline(
 
 		//Dmem_write	(wen, addr, data)
 		DCACHE_wen = ctrl_memwrite_MEM;
-		// case(ctrl_FB) //genaral case，因為sw也有可能forwarded，但tb沒這問題
-		// 	2'b00: wdata_EX = rs2_data_EX; 
-		// 	2'b01: wdata_EX = rd_w_MEM_real; 
-		// 	2'b10: wdata_EX = rd_w_WB; 
-		// 	default:wdata_EX = rs2_data_EX; 
-		// endcase
-		wdata_EX = rs2_data_EX; //這也會過
+		case(ctrl_FB) //genaral case，因為sw也有可能forwarded，但tb沒這問題
+			2'b00: wdata_EX = rs2_data_EX; 
+			2'b01: wdata_EX = rd_w_MEM_real; 
+			2'b10: wdata_EX = rd_w_WB; 
+			default:wdata_EX = rs2_data_EX; 
+		endcase
 		DCACHE_wdata = {wdata_MEM[7:0],wdata_MEM[15:8],wdata_MEM[23:16],wdata_MEM[31:24]};
-
+		
 		//Icache
 		ICACHE_ren = !ICACHE_stall;
 		ICACHE_wen = 1'b0;
 		ICACHE_wdata = 0;
-		ICACHE_addr = PC[31:2]; 
+		ICACHE_addr = PC[31:2]; //fect instruction //bits??? PC[31:2]=ICACHE_addr
+
 
 		//alu
 		case(ctrl_FA)
@@ -574,13 +579,13 @@ module RISCV_Pipeline(
 			2'b10: alu_in1 = rd_w_WB;
 			default: alu_in1 = rs1_data_EX;
 		endcase
+		alu_in2_temp = ctrl_ALUSrc_EX? imme_EX : rs2_data_EX;
 		case(ctrl_FB)
-			2'b00: alu_in2_temp = rs2_data_EX;
-			2'b01: alu_in2_temp = rd_w_MEM_real;
-			2'b10: alu_in2_temp = rd_w_WB;
-			default:alu_in2_temp = rs2_data_EX;
+			2'b00: alu_in2 = alu_in2_temp;
+			2'b01: alu_in2 = rd_w_MEM;
+			2'b10: alu_in2 = rd_w_WB;
+			default:alu_in2 = alu_in2_temp;
 		endcase
-		alu_in2 = ctrl_ALUSrc_EX? imme_EX : alu_in2_temp;
 
         case (alu_ctrl_EX)
             4'd0: alu_out_EX = alu_in1 + alu_in2;
@@ -598,40 +603,128 @@ module RISCV_Pipeline(
 		//rd_w為運算後的值
 		rd_w_EX = (ctrl_jal_EX | ctrl_jalr_EX)? PC_EX+4 : alu_out_EX;
 
+
 		//mem_to_register (write rd)
 		write_rd_MEM =  ctrl_memtoreg_MEM? read_data_MEM : rd_w_MEM_real;
 
-	
+		//PC_nxt, branch,jal or jalr or pc+4
+		PC_B_ID = PC_ID + imme_ID;
+		
 		//jalr = rs1 + imme (rs1 forwarded)
 		case(ctrl_FA_j) //實際上只有00,10會成立
 			2'b00: PC_jalr_ID = rs1_data_ID + imme_ID;
-			//2'b01: PC_jalr_ID = rd_w_EX + imme_ID;
-			2'b10: PC_jalr_ID = rd_w_MEM + imme_ID;
+			2'b01: PC_jalr_ID = rd_w_EX + imme_ID;
+			2'b10: PC_jalr_ID = rd_w_MEM_real + imme_ID;
 			default: PC_jalr_ID = rs1_data_ID + imme_ID;
 		endcase
 
 		case(ctrl_FA_j) //實際上只有01
-			//2'b00: compare_rs1 = rs1_data_ID;
+			2'b00: compare_rs1 = rs1_data_ID;
 			2'b01: compare_rs1 = rd_w_EX;
-			//2'b10: compare_rs1 = rd_w_MEM;
+			2'b10: compare_rs1 = rd_w_MEM_real;
 			default: compare_rs1 = rs1_data_ID;
 		endcase
-		// case(ctrl_FB_j) //實際上rs2不需要forwarding
-		// 	2'b00: compare_rs2 = rs2_data_ID;
-		// 	2'b01: compare_rs2 = rd_w_EX;
-		// 	2'b10: compare_rs2 = rd_w_MEM;
-		// 	default: compare_rs2 = rs2_data_ID;
-		// endcase
-		compare_rs2 = rs2_data_ID;
+		case(ctrl_FB_j) //實際上rs2不需要forwarding
+			2'b00: compare_rs2 = rs2_data_ID;
+			2'b01: compare_rs2 = rd_w_EX;
+			2'b10: compare_rs2 = rd_w_MEM_real;
+			default: compare_rs2 = rs2_data_ID;
+		endcase
 
+		taken = ( (ctrl_beq_ID & (compare_rs1==compare_rs2)) | (ctrl_bne_ID & (compare_rs1!=compare_rs2)) );
+		//PC
+    	//inst_IF = ( ((ctrl_beq_ID|ctrl_bne_ID)&taken) |ctrl_jal_ID|ctrl_jalr_ID)? 32'd0 : {ICACHE_rdata[7:0],ICACHE_rdata[15:8],ICACHE_rdata[23:16],ICACHE_rdata[31:24]};
 
-		//PC_nxt, branch,jal or jalr or pc+4
-		PC_B_ID = PC_ID + imme_ID;
-
-		ctrl_bj_taken = ( ((ctrl_beq_ID & compare_rs1==compare_rs2) | ctrl_bne_ID & (compare_rs1!=compare_rs2)) | ctrl_jal_ID);
-
-		PC_nxt = ctrl_jalr_ID? PC_jalr_ID : ctrl_bj_taken? PC_B_ID : PC+4; //rs1+imme 或 pc+imme 或 pc+4;
+		//ctrl_b_taken = ( ((ctrl_beq_ID & compare_rs1==compare_rs2) | ctrl_bne_ID & (compare_rs1!=compare_rs2)) | ctrl_jal_ID);
+		//PC_nxt = ctrl_jalr_ID? PC_jalr_ID : ctrl_b_taken? PC_B_ID : PC+4; //rs1+imme 或 pc+imme 或 pc+4;
     end
+
+	always @(*)begin
+		ctrl_beq_IF = 0;
+		ctrl_bne_IF = 0;
+		imme_IF = 0;
+		case(state)
+			state_t1: begin
+				inst_IF = ( ((ctrl_beq_ID|ctrl_bne_ID)&!taken) |ctrl_jal_ID|ctrl_jalr_ID)? 32'd0 : {ICACHE_rdata[7:0],ICACHE_rdata[15:8],ICACHE_rdata[23:16],ICACHE_rdata[31:24]};
+			end
+			state_t2: begin
+				inst_IF = ( ((ctrl_beq_ID|ctrl_bne_ID)&!taken) |ctrl_jal_ID|ctrl_jalr_ID)? 32'd0 : {ICACHE_rdata[7:0],ICACHE_rdata[15:8],ICACHE_rdata[23:16],ICACHE_rdata[31:24]};
+			end
+			state_nt2:begin
+				inst_IF = ( ((ctrl_beq_ID|ctrl_bne_ID)&taken) |ctrl_jal_ID|ctrl_jalr_ID)? 32'd0 : {ICACHE_rdata[7:0],ICACHE_rdata[15:8],ICACHE_rdata[23:16],ICACHE_rdata[31:24]};
+			end
+			state_nt1:begin
+				inst_IF = ( ((ctrl_beq_ID|ctrl_bne_ID)&taken) |ctrl_jal_ID|ctrl_jalr_ID)? 32'd0 : {ICACHE_rdata[7:0],ICACHE_rdata[15:8],ICACHE_rdata[23:16],ICACHE_rdata[31:24]};
+			end
+		endcase
+		if (inst_IF[6:0] == 7'b1100011)begin //op
+			PC_B_nxt = PC+4;
+            ctrl_beq_IF = !inst_IF[12]; //func3[0]
+            ctrl_bne_IF = inst_IF[12];
+            imme_IF = { {20{inst_IF[31]}}, inst_IF[7], inst_IF[30:25], inst_IF[11:8], 1'b0 }; //beq, bne
+		end
+		else begin
+			PC_B_nxt = PC_B;
+		end
+		PC_B_IF = PC + imme_IF;
+
+		case(state)
+			state_t1: begin
+				PC_nxt = ctrl_jalr_ID? PC_jalr_ID : ctrl_jal_ID? PC_B_ID : (ctrl_beq_IF|ctrl_bne_IF)? PC_B_IF : PC+4;
+			end
+			state_t2: begin
+				PC_nxt = ctrl_jalr_ID? PC_jalr_ID : ctrl_jal_ID? PC_B_ID : (ctrl_beq_IF|ctrl_bne_IF)? PC_B_IF : PC+4;
+			end
+			state_nt2:begin
+				PC_nxt = ctrl_jalr_ID? PC_jalr_ID : ctrl_jal_ID? PC_B_ID : ((ctrl_beq_ID|ctrl_bne_ID)&taken)? PC_B_ID : PC+4;
+			end
+			state_nt1:begin
+				PC_nxt = ctrl_jalr_ID? PC_jalr_ID : ctrl_jal_ID? PC_B_ID : ((ctrl_beq_ID|ctrl_bne_ID)&taken)?  PC_B_ID : PC+4;
+			end
+		endcase
+
+	end
+
+	always @(*)begin
+		case (state)
+			state_t1:begin
+				if (ctrl_beq_ID|ctrl_bne_ID)begin
+					if (taken)nxt_state = state_t1;
+					else nxt_state = state_t2;
+				end
+				else begin
+					nxt_state = state;
+				end
+			end
+			state_t2:begin
+				if (ctrl_beq_ID|ctrl_bne_ID)begin
+					if (taken)nxt_state = state_t1;
+					else nxt_state = state_nt2;
+				end
+				else begin
+					nxt_state = state;
+				end
+			end
+			state_nt2:begin
+				if (ctrl_beq_ID|ctrl_bne_ID)begin
+					if (taken)nxt_state = state_t2;
+					else nxt_state = state_nt1;
+				end
+				else begin
+					nxt_state = state;
+				end
+			end
+			state_nt1:begin
+				if (ctrl_beq_ID|ctrl_bne_ID)begin
+					if (taken)nxt_state = state_nt2;
+					else nxt_state = state_nt1;
+				end
+				else begin
+					nxt_state = state;
+				end
+			end
+		endcase
+	end
 
 
 	//========= hazard ===========
@@ -671,7 +764,7 @@ module RISCV_Pipeline(
 		end
 
 		//(rs2 at EX)
-		if (ctrl_regwrite_MEM & rd_MEM!=0 & rd_MEM==rs2_EX)begin //& type_EX!=3'd1 若是I-type，不需要用到r2
+		if (ctrl_regwrite_MEM & rd_MEM!=0 & rd_MEM==rs2_EX)begin
 			ctrl_FB = 2'b01;
 		end
 		else if (ctrl_regwrite_WB & rd_WB!=0 & rd_WB==rs2_EX)begin
@@ -695,6 +788,9 @@ module RISCV_Pipeline(
             end
 
 			imme_EX <= 0 ;
+
+			ctrl_beq_ID <= 0;
+			ctrl_bne_ID <= 0;
 
 			ctrl_jalr_EX <= 0;
 			ctrl_jal_EX  <= 0;
@@ -741,6 +837,9 @@ module RISCV_Pipeline(
 			PC_EX <= 0;
             PC <= 0;
 
+            ICACHE_addr <= 0;
+
+			state <= state_nt1;
         end
         else if (!ICACHE_stall & !DCACHE_stall ) begin
             if (ctrl_regwrite_MEM & rd_MEM!=0)begin
@@ -752,6 +851,9 @@ module RISCV_Pipeline(
 
 			if (!ctrl_lw_stall)begin
 				imme_EX <= imme_ID;
+
+				ctrl_beq_ID <= ctrl_beq_IF;
+				ctrl_bne_ID <= ctrl_bne_IF;
 
 				ctrl_jalr_EX <= ctrl_jalr_ID; 
 
@@ -775,6 +877,9 @@ module RISCV_Pipeline(
 			end
 			else begin //進到EX的東西全部清0
 				imme_EX <= 0;
+
+				ctrl_beq_ID <= ctrl_beq_IF;
+				ctrl_bne_ID <= ctrl_bne_IF;
 
 				ctrl_jalr_EX <= 0; 
 
@@ -854,8 +959,9 @@ module RISCV_Pipeline(
 			if (!ctrl_lw_stall)begin
 				PC_ID <= PC;
 				PC_EX <= PC_ID;
+				PC_B <= PC_B_nxt;
 
-				PC <= PC_nxt;
+				PC <= ((ctrl_beq_ID|ctrl_bne_ID)&!taken)? PC_B : PC_nxt;
 			end
 			else begin
 				PC_ID <= PC_ID;
@@ -863,6 +969,9 @@ module RISCV_Pipeline(
 
 				PC <= PC;
 			end
+
+			state <= nxt_state;
+
         end
 		//============ stall ================
 		else begin 
@@ -872,6 +981,9 @@ module RISCV_Pipeline(
             else begin
                 register[0] <=0;
             end
+
+			ctrl_beq_ID <= ctrl_beq_ID;
+			ctrl_bne_ID <= ctrl_bne_ID;
 
 			ctrl_jalr_EX <= ctrl_jalr_EX;
 			ctrl_jal_EX  <= ctrl_jal_EX; 
@@ -923,6 +1035,9 @@ module RISCV_Pipeline(
 			PC_EX <= PC_EX;
             PC <= PC;
 			
+            ICACHE_addr <= PC[31:2]; //fect instruction //bits??? PC[31:2]=ICACHE_addr
+
+			state <= state;
 		end
     end
 
