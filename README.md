@@ -22,7 +22,8 @@ Copy content in the files below into CHIP.v, and run ...
 
 * BrPred:
   1. 2-bits predictor: CHIP_Bred.v
-  2. without prediction: CHIP_Bred_comp1.v, CHIP_Bred_comp2.v
+  2. 2-bits predictor(小改）:  CHIP_Bred_comp2.v 
+  3. without prediction: CHIP_Bred_comp1.v (from baseline)
 
 * Compress: 
   CHIP_compress.v
