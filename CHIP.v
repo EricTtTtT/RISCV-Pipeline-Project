@@ -1,25 +1,25 @@
 // Top module of your design, you cannot modify this module!!
-	module CHIP (	clk,
-					rst_n,
+module CHIP (	clk,
+				rst_n,
 	//----------for slow_memD------------
-					mem_read_D,
-					mem_write_D,
-					mem_addr_D,
-					mem_wdata_D,
-					mem_rdata_D,
-					mem_ready_D,
+				mem_read_D,
+				mem_write_D,
+				mem_addr_D,
+				mem_wdata_D,
+				mem_rdata_D,
+				mem_ready_D,
 	//----------for slow_memI------------
-					mem_read_I,
-					mem_write_I,
-					mem_addr_I,
-					mem_wdata_I,
-					mem_rdata_I,
-					mem_ready_I,
+				mem_read_I,
+				mem_write_I,
+				mem_addr_I,
+				mem_wdata_I,
+				mem_rdata_I,
+				mem_ready_I,
 	//----------for TestBed--------------				
-					DCACHE_addr, 
-					DCACHE_wdata,
-					DCACHE_wen   
-				);
+				DCACHE_addr, 
+				DCACHE_wdata,
+				DCACHE_wen   
+	);
 	input			clk, rst_n;
 	//--------------------------
 
@@ -63,7 +63,6 @@
 		// 1. pipelined RISCV processor
 		// 2. data cache
 		// 3. instruction cache
-
 
 		RISCV_Pipeline i_RISCV(
 			// control interface
@@ -118,205 +117,190 @@
 			.mem_rdata  (mem_rdata_I) ,
 			.mem_ready  (mem_ready_I)
 		);
-	endmodule
-//================= cache ============================
-	module cache(
-		clk, proc_reset, proc_read, proc_write, proc_addr, proc_rdata, proc_wdata, proc_stall,
-						,mem_read, mem_write, mem_addr, mem_wdata, mem_rdata, mem_ready
-						,clear
-	);
-	//==== input/output definition ============================
-		input          clk;
-		// processor interface
-		input          proc_reset;
-		input          proc_read, proc_write;
-		input   [29:0] proc_addr;
-		input   [31:0] proc_wdata;
-		output reg         proc_stall;
-		output reg  [31:0] proc_rdata;
-		// memory interface
-		input  [127:0] mem_rdata;
-		input          mem_ready;
-		output reg         mem_read, mem_write;
-		output reg [31:4] mem_addr;
-		output reg [127:0] mem_wdata;
-		
-		input clear;
-	//==== wire/reg definition ================================
+endmodule
 
-	parameter STATE_compare_tag = 2'b00;
-	parameter STATE_write_back = 2'b01;
-	parameter STATE_allocate = 2'b10;
-	parameter STATE_idle = 2'b11;
+//==== 2-way Cache ========================================
+module cache(
+    clk, proc_reset,
+    proc_read, proc_write, proc_addr, proc_rdata, proc_wdata, proc_stall,
+    mem_read, mem_write, mem_addr, mem_rdata, mem_wdata, mem_ready );
+    
+    //==== input/output definition ========================
+    input          clk;
+    // processor interface
+    input          proc_reset;
+    input          proc_read, proc_write;
+    input   [29:0] proc_addr;
+    input   [31:0] proc_wdata;
+    output         proc_stall;
+    output  [31:0] proc_rdata;
+    // memory interface
+    input  [127:0] mem_rdata;
+    input          mem_ready;
+    output         mem_read, mem_write;
+    output reg [27:0] mem_addr;
+    output reg [127:0] mem_wdata;
+    
+    //==== wire/reg definition ============================
+    parameter IDLE = 2'd0;
+    parameter COMP = 2'd1;
+    parameter WRITE = 2'd2;
+    parameter ALLOC = 2'd3;
 
-	integer i;
+    parameter NUM_BLOCKS = 4;
+    parameter BLOCK_SIZE = 312;
+    // 311:valid1,      310:dirty1,     309:valid2,     308:dirty2
+    // 307-282:tag1,    281-154:data1,  153-128:tag2,   127-0:data2
 
-	reg [154:0] cache [0:7]; // "1" bit valid ,dirty, "25" bits tags, "128" bits data. =152 bits, 8 = 2^3 entries
-	reg [154:0] nxt_cache [0:7]; 
-	reg [1:0] state;
-	reg [1:0] nxt_state;
-	//wire [2:0] blocks; //8 blocks
-	wire dirty;
-	wire valid;
-	wire miss;
+    integer i;
 
-	//assign  blocks = proc_addr[4:2];
-	assign dirty = cache[proc_addr[4:2]][153];
-	assign valid = cache[proc_addr[4:2]][154];
-	assign miss = !(cache[proc_addr[4:2]][154] & (cache[proc_addr[4:2]][152:128] == proc_addr[29:5]));
+    wire valid1, dirty1, hit1;
+    wire valid2, dirty2, hit2;
+    wire hit;
+    wire [1:0] block_addr;
+    wire [25:0] tag;
 
-	reg finish;
-	reg nxt_finish;
+    // flip flops
+    reg [1:0] state, state_next;
+    reg [BLOCK_SIZE-1:0] cache [0:NUM_BLOCKS-1];
+    reg [BLOCK_SIZE-1:0] cache_next [0:NUM_BLOCKS-1];
+    reg [NUM_BLOCKS-1:0] lru, lru_next;
 
-	//==== combinational circuit ==============================
+    //==== Combinational Circuit ==========================
+    assign block_addr = proc_addr[3:2];
+    assign tag = proc_addr[29:4];
+    assign valid1 = cache[block_addr][311];
+    assign dirty1 = cache[block_addr][310];
+    assign valid2 = cache[block_addr][309];
+    assign dirty2 = cache[block_addr][308];
+    assign hit1 = valid1 & (cache[block_addr][307:282] == tag);
+    assign hit2 = valid2 & (cache[block_addr][153:128] == tag);
+    assign hit = hit1 | hit2;
+    
+    assign proc_stall = (state==COMP & hit)? 0 : 1;
+    assign proc_rdata = (hit1 & proc_read)?
+                            proc_addr[1]?
+                                proc_addr[0]?
+                                    cache[block_addr][281:250]
+                                :   cache[block_addr][249:218]
+                            :   proc_addr[0]?
+                                    cache[block_addr][217:186]
+                                :   cache[block_addr][185:154]
+                        : (hit2 & proc_read)?
+                            proc_addr[1]?
+                                proc_addr[0]?
+                                    cache[block_addr][127:96]
+                                :   cache[block_addr][95:64]
+                            :   proc_addr[0]?
+                                    cache[block_addr][63:32]
+                                :   cache[block_addr][31:0]
+                        : 32'd0;
+    assign mem_read = ~mem_ready && state==ALLOC;
+    assign mem_write = ~mem_ready && state==WRITE;
 
-	always @(*)begin
-		case(state)
-			STATE_compare_tag:begin
-				if (miss & !dirty)begin //not dirty
-					nxt_state = STATE_allocate;
-				end
-				else if (miss & dirty ) begin //is miss and dirty
-					nxt_state = STATE_write_back;
-				end
+    //---- Finite State Machine ---------------------------
+    always @(*) begin
+        case(state)
+            IDLE: begin
+                state_next = COMP;
+            end
+            COMP: begin
+                state_next = hit? COMP : (dirty1 | dirty2)? WRITE : ALLOC;
+            end
+            WRITE: begin
+                state_next = mem_ready? ALLOC : WRITE;
+            end
+            ALLOC: begin
+                state_next = mem_ready? COMP : ALLOC;                
+            end
+            default: state_next = state;
+        endcase
+    end
 
-				else begin
-					nxt_state = STATE_compare_tag;
-				end
-			end
+    always @(*) begin
+        //---- I/O signals --------------------------------
+        mem_addr = (state==WRITE)?
+                        dirty1?
+                            {cache[block_addr][307:282], block_addr}
+                        :   {cache[block_addr][153:128], block_addr}
+                    : proc_addr[29:2];
+        mem_wdata = dirty1? cache[block_addr][281:154] : cache[block_addr][127:0];
+    
+        //---- handle cache_next and lru bits -------------
+        for (i=0; i<NUM_BLOCKS; i=i+1) begin
+            cache_next[i] = cache[i];
+            lru_next[i] = lru[i];
+        end
+        lru_next[block_addr] = state==COMP?
+                                    hit1? 0 : hit2? 1 : lru[block_addr]
+                                : lru[block_addr];
+        
+        case(state)
+            COMP: begin
+                if (hit1 & proc_write) begin
+                    cache_next[block_addr][(proc_addr[1:0])*32+185 -: 32] = proc_wdata;
+                    cache_next[block_addr][307:282] = tag;
+                    cache_next[block_addr][311:310] = 2'b11;
+                end else if (hit2 & proc_write) begin
+                    cache_next[block_addr][(proc_addr[1:0])*32+31 -: 32] = proc_wdata;
+                    cache_next[block_addr][153:128] = tag;
+                    cache_next[block_addr][309:308] = 2'b11;
+                end else begin
+                    cache_next[block_addr] = cache[block_addr];
+                end
+            end
+            WRITE: begin
+                if (mem_ready) begin
+                    if (dirty1) begin
+                        cache_next[block_addr][311:310] = 2'b10;
+                    end else begin
+                        cache_next[block_addr][309:308] = 2'b10;
+                    end
+                end
+            end
+            ALLOC: begin
+                if (!dirty1 & !dirty2) begin
+                    if (lru[block_addr]) begin
+                        cache_next[block_addr][281:154] = mem_rdata;
+                        cache_next[block_addr][307:282] = tag;
+                        cache_next[block_addr][311:310] = 2'b10;
+                    end else begin
+                        cache_next[block_addr][127:0] = mem_rdata;
+                        cache_next[block_addr][153:128] = tag;
+                        cache_next[block_addr][309:308] = 2'b10;
+                    end
+                end else if (!dirty1) begin
+                    cache_next[block_addr][281:154] = mem_rdata;
+                    cache_next[block_addr][307:282] = tag;
+                    cache_next[block_addr][311:310] = 2'b10;
+                end else begin
+                    cache_next[block_addr][127:0] = mem_rdata;
+                    cache_next[block_addr][153:128] = tag;
+                    cache_next[block_addr][309:308] = 2'b10;   
+                end
+            end
+        endcase
+    end
 
-			STATE_allocate:begin
-				if (mem_ready)begin
-					nxt_state = STATE_compare_tag;
-				end
-				else begin
-					nxt_state = STATE_allocate;
-				end
-			end
+    //==== Sequential Circuit =============================
+    always@( posedge clk ) begin
+        if( proc_reset ) begin
+            for (i=0; i<NUM_BLOCKS; i=i+1) begin
+                cache[i] <= 312'd0;
+                lru[i] <= 0;
+            end
+            state <= IDLE;
+        end else begin
+            for (i=0; i<NUM_BLOCKS; i=i+1) begin
+                cache[i] <= cache_next[i];
+                lru[i] <= lru_next[i];
+            end
+            state <= state_next;
+        end
+    end
 
-			STATE_write_back:begin
-				if (mem_ready)begin
-					nxt_state = STATE_allocate;
-				end
-				else begin
-					nxt_state = STATE_write_back;
-				end
-			end
+endmodule
 
-			STATE_idle:begin
-				nxt_state = STATE_compare_tag;
-			end
-
-		endcase
-	end
-
-	always @(*)begin
-		mem_wdata = 0;
-		proc_rdata = 0; //hit
-		mem_addr  = 0;
-		for (i = 0; i<8; i=i+1)begin
-			nxt_cache[i] = cache[i];
-		end
-		nxt_finish = 0;
-		mem_read = 0;
-		mem_write = 0;
-
-		case(state)
-			STATE_compare_tag:begin
-				if (miss) proc_stall=1;
-				else proc_stall =0;
-				
-				if (!miss & proc_read)begin // valid & hit(tags)
-					proc_rdata = cache[proc_addr[4:2]][ proc_addr[1:0]*32+31 -: 32]; //hit
-				end
-				else if (!miss & proc_write ) begin
-					///////寫回去
-					mem_addr  = proc_addr[29:2];
-					mem_wdata = proc_wdata;
-					if (mem_ready & !finish)begin
-						mem_read = 0;
-						mem_write = 0;
-						nxt_finish = 1;
-					end
-					else begin
-						proc_stall = 1;
-						mem_read = 0;
-						mem_write = 1;
-						nxt_finish = 0;
-					end
-					///////
-					nxt_cache[proc_addr[4:2]][ proc_addr[1:0]*32+31 -: 32] = proc_wdata; //data
-					nxt_cache[proc_addr[4:2]][152:128] = proc_addr[29:5]; //tags
-					nxt_cache[proc_addr[4:2]][153] = 1; //dirty
-					nxt_cache[proc_addr[4:2]][154] = 1; //valid
-				end
-			end
-
-			STATE_allocate:begin
-				proc_stall = 1;
-				mem_addr  = proc_addr[29:2];
-				if (mem_ready & !finish)begin
-					nxt_cache[proc_addr[4:2]][127:0] = mem_rdata; //data
-					nxt_cache[proc_addr[4:2]][152:128] = proc_addr[29:5]; //tags
-					nxt_cache[proc_addr[4:2]][153] = 0; //dirty
-					nxt_cache[proc_addr[4:2]][154] = 1; //valid
-					mem_read = 0;
-					mem_write = 0;
-					nxt_finish = 1;
-				end
-				else begin
-					mem_read = 1;
-					mem_write = 0;
-					nxt_finish = 0;
-				end              
-			end
-
-			STATE_write_back:begin
-				proc_stall = 1;
-				mem_wdata = cache[proc_addr[4:2]][127:0];
-				mem_addr  = { cache[proc_addr[4:2]][152:128] , proc_addr[4:2] };
-				if (mem_ready & !finish)begin
-					nxt_cache[proc_addr[4:2]][154] = 1; //valid
-					nxt_cache[proc_addr[4:2]][153] = 0; //dirty
-					mem_read = 0;
-					mem_write = 0;
-					nxt_finish = 1;
-				end
-				else  begin
-					mem_read = 0;
-					mem_write = 1;
-					nxt_finish = 0;
-				end
-			end
-			
-			STATE_idle:begin
-				proc_stall = 1;
-			end
-
-		endcase
-	end
-
-	//==== sequential circuit =================================
-	always@( posedge clk ) begin
-		if( proc_reset ) begin
-			for (i = 0 ; i < 8 ; i=i+1)begin
-				cache[i] <= 0;
-			end
-			state <= STATE_idle;
-			finish <= nxt_finish;
-		end
-		else begin
-			for (i = 0; i<8; i=i+1)begin
-				cache[i] <= nxt_cache[i];
-			end
-			state <= nxt_state;
-			finish <= nxt_finish;
-		end
-	end
-
-	endmodule
-
-//================= cache ============================
 
 //Disscussion
 //1. mem stage 用太多東西，critical path會變大，移到wb stage？(write reg會變comb)
