@@ -674,8 +674,6 @@
 
 		//========= memory ========= 
 		reg [31:0] read_data_MEM; //read from mem
-		reg [31:0] read_data_WB; 
-
 
 		reg [31:0] wdata_EX; //write mem
 		reg [31:0] wdata_MEM;
@@ -701,7 +699,6 @@
 		//========= wire & reg ==============
 		reg	[2:0]	type;
 		reg [31:0]	write_rd_MEM;
-		reg [31:0]	write_rd_WB;
 
 		//========= Wire assignment ==========
 		assign inst_IF = (ctrl_bj_taken|ctrl_jalr_ID)? 32'h00000013:{ICACHE_rdata[7:0],ICACHE_rdata[15:8],ICACHE_rdata[23:16],ICACHE_rdata[31:24]};
@@ -881,10 +878,7 @@
 			rd_w_EX = (ctrl_jal_EX | ctrl_jalr_EX)? PC_EX+4 : alu_out_EX;
 
 			//mem_to_register (write rd)
-			//write_rd_MEM =  ctrl_memtoreg_MEM? read_data_MEM : rd_w_MEM_real;
-			write_rd_WB =  ctrl_memtoreg_WB? read_data_WB : rd_w_WB;
-			register[rd_WB] = (rd_WB!=0)? write_rd_WB:0;
-
+			write_rd_MEM =  ctrl_memtoreg_MEM? read_data_MEM : rd_w_MEM_real;
 
 		
 			//jalr = rs1 + imme (rs1 forwarded)
@@ -975,9 +969,9 @@
 		integer i;
 		always @(posedge clk )begin
 			if (!rst_n)begin
-				// for (i = 0 ; i<32; i=i+1)begin
-				// 	register[i] <= 0 ;
-				// end
+				for (i = 0 ; i<32; i=i+1)begin
+					register[i] <= 0 ;
+				end
 
 				imme_EX <= 0 ;
 
@@ -1028,12 +1022,12 @@
 
 			end
 			else if (!ICACHE_stall & !DCACHE_stall ) begin
-				// if (ctrl_regwrite_MEM & rd_MEM!=0)begin
-				// 	register[rd_MEM] <= write_rd_MEM; //可用comb??????????????????????????????????????????
-				// end
-				// else begin
-				// 	register[0] <=0;
-				// end
+				if (ctrl_regwrite_MEM & rd_MEM!=0)begin
+					register[rd_MEM] <= write_rd_MEM; //可用comb??????????????????????????????????????????
+				end
+				else begin
+					register[0] <=0;
+				end
 
 				if (!ctrl_lw_stall)begin
 					imme_EX <= imme_ID;
@@ -1117,7 +1111,7 @@
 
 					rd_w_MEM <= rd_w_EX;
 					rd_w_WB <= ctrl_memread_MEM? read_data_MEM:rd_w_MEM;  //可用comb??????????????????????????????????????????
-	
+
 				end
 				else begin
 					rs1_EX <= 0;			
@@ -1149,12 +1143,12 @@
 			end
 			//============ stall ================
 			else begin 
-				// if (ctrl_regwrite_MEM & rd_MEM!=0)begin
-				// 	register[rd_MEM] <= register[rd_MEM];
-				// end
-				// else begin
-				// 	register[0] <=0;
-				// end
+				if (ctrl_regwrite_MEM & rd_MEM!=0)begin
+					register[rd_MEM] <= register[rd_MEM];
+				end
+				else begin
+					register[0] <=0;
+				end
 
 				ctrl_jalr_EX <= ctrl_jalr_EX;
 				ctrl_jal_EX  <= ctrl_jal_EX; 

@@ -121,10 +121,22 @@
 	endmodule
 //================= cache ============================
 	module cache(
-		clk, proc_reset, proc_read, proc_write, proc_addr, proc_rdata, proc_wdata, proc_stall,
-						,mem_read, mem_write, mem_addr, mem_wdata, mem_rdata, mem_ready
-						,clear
+		clk,
+		proc_reset,
+		proc_read,
+		proc_write,
+		proc_addr,
+		proc_rdata,
+		proc_wdata,
+		proc_stall,
+		mem_read,
+		mem_write,
+		mem_addr,
+		mem_rdata,
+		mem_wdata,
+		mem_ready
 	);
+		
 	//==== input/output definition ============================
 		input          clk;
 		// processor interface
@@ -138,12 +150,11 @@
 		input  [127:0] mem_rdata;
 		input          mem_ready;
 		output reg         mem_read, mem_write;
-		output reg [31:4] mem_addr;
+		output reg [27:0] mem_addr;
 		output reg [127:0] mem_wdata;
 		
-		input clear;
 	//==== wire/reg definition ================================
-
+		
 	parameter STATE_compare_tag = 2'b00;
 	parameter STATE_write_back = 2'b01;
 	parameter STATE_allocate = 2'b10;
@@ -151,35 +162,69 @@
 
 	integer i;
 
-	reg [154:0] cache [0:7]; // "1" bit valid ,dirty, "25" bits tags, "128" bits data. =152 bits, 8 = 2^3 entries
-	reg [154:0] nxt_cache [0:7]; 
+	reg [156:0] cache0 [0:3]; // "1" bit lru, "1" bit valid, "1"bit dirty, "26" bits tags, "128" bits data. =157 bits
+	reg [156:0] cache1 [0:3]; // "1" bit lru, "1" bit valid, "1"bit dirty, "26" bits tags, "128" bits data. =157 bits
+	reg [156:0] nxt_cache0 [0:3]; // "1" bit lru, "1" bit valid, "1"bit dirty, "26" bits tags, "128" bits data. =157 bits
+	reg [156:0] nxt_cache1 [0:3]; // "1" bit lru, "1" bit valid, "1"bit dirty, "26" bits tags, "128" bits data. =157 bits
+
 	reg [1:0] state;
 	reg [1:0] nxt_state;
-	//wire [2:0] blocks; //8 blocks
-	wire dirty;
-	wire valid;
-	wire miss;
-
-	//assign  blocks = proc_addr[4:2];
-	assign dirty = cache[proc_addr[4:2]][153];
-	assign valid = cache[proc_addr[4:2]][154];
-	assign miss = !(cache[proc_addr[4:2]][154] & (cache[proc_addr[4:2]][152:128] == proc_addr[29:5]));
-
 	reg finish;
 	reg nxt_finish;
+
+	wire lru0; //0=優先
+	wire lru1;
+	//wire [1:0] sets; //4 sets
+	wire valid0;
+	wire valid1;
+	wire dirty;
+	wire dirty0;
+	wire dirty1;
+	wire miss;
+	wire miss0;
+	wire miss1;
+
+	//assign sets = proc_addr[3:2];
+	assign lru0 = cache0[proc_addr[3:2]][156];
+	assign lru1 = cache1[proc_addr[3:2]][156];
+	assign valid0 = cache0[proc_addr[3:2]][155];
+	assign valid1 = cache1[proc_addr[3:2]][155];
+	assign dirty0 = cache0[proc_addr[3:2]][154];
+	assign dirty1 = cache1[proc_addr[3:2]][154];
+	assign miss0 = !( cache0[proc_addr[3:2]][155] & (cache0[proc_addr[3:2]][153:128] == proc_addr[29:4]));
+	assign miss1 = !( cache1[proc_addr[3:2]][155] & (cache1[proc_addr[3:2]][153:128] == proc_addr[29:4]));
+	assign dirty = cache0[proc_addr[3:2]][154] | cache1[proc_addr[3:2]][154];  // dirty0 | dirty1
+	assign miss = miss0 & miss1;  // == hit1 | hit2
 
 	//==== combinational circuit ==============================
 
 	always @(*)begin
 		case(state)
 			STATE_compare_tag:begin
-				if (miss & !dirty)begin //not dirty
+				if (miss & !dirty)begin //clean
 					nxt_state = STATE_allocate;
 				end
-				else if (miss & dirty ) begin //is miss and dirty
-					nxt_state = STATE_write_back;
+
+				else if (miss & !dirty0 ) begin //is miss and 第一排!dirty
+					if (!lru0)begin             //第一排的優先的話就allocate
+						nxt_state = STATE_allocate;
+					end
+					else begin                  //不優先的話就先write_back另一邊，接著再allocate，
+						nxt_state = STATE_write_back;
+					end
 				end
 
+				else if (miss & !dirty1 ) begin //is miss and dirty
+					if (!lru1)begin
+						nxt_state = STATE_allocate;
+					end
+					else begin
+						nxt_state = STATE_write_back;
+					end
+				end
+				else if (miss & dirty)begin
+					nxt_state = STATE_write_back;
+				end
 				else begin
 					nxt_state = STATE_compare_tag;
 				end
@@ -206,89 +251,129 @@
 			STATE_idle:begin
 				nxt_state = STATE_compare_tag;
 			end
-
 		endcase
 	end
 
 	always @(*)begin
-		mem_wdata = 0;
-		proc_rdata = 0; //hit
-		mem_addr  = 0;
+		proc_rdata = 0 ;
+		nxt_finish = 0 ;
 		for (i = 0; i<8; i=i+1)begin
-			nxt_cache[i] = cache[i];
+			nxt_cache0[i] = cache0[i];
+			nxt_cache1[i] = cache1[i];
 		end
-		nxt_finish = 0;
+		mem_wdata = 0;
+		mem_addr  = 0;
 		mem_read = 0;
 		mem_write = 0;
-
+		
 		case(state)
 			STATE_compare_tag:begin
 				if (miss) proc_stall=1;
 				else proc_stall =0;
-				
-				if (!miss & proc_read)begin // valid & hit(tags)
-					proc_rdata = cache[proc_addr[4:2]][ proc_addr[1:0]*32+31 -: 32]; //hit
-				end
-				else if (!miss & proc_write ) begin
-					///////寫回去
-					mem_addr  = proc_addr[29:2];
-					mem_wdata = proc_wdata;
-					if (mem_ready & !finish)begin
-						mem_read = 0;
-						mem_write = 0;
-						nxt_finish = 1;
+			
+				if (!miss & proc_read)begin
+					if (!miss0)begin
+						proc_rdata = cache0[proc_addr[3:2]][ proc_addr[1:0]*32+31 -: 32]; //hit
 					end
-					else begin
-						proc_stall = 1;
-						mem_read = 0;
-						mem_write = 1;
-						nxt_finish = 0;
+					else if (!miss1)begin
+						proc_rdata = cache1[proc_addr[3:2]][ proc_addr[1:0]*32+31 -: 32]; //hit
 					end
-					///////
-					nxt_cache[proc_addr[4:2]][ proc_addr[1:0]*32+31 -: 32] = proc_wdata; //data
-					nxt_cache[proc_addr[4:2]][152:128] = proc_addr[29:5]; //tags
-					nxt_cache[proc_addr[4:2]][153] = 1; //dirty
-					nxt_cache[proc_addr[4:2]][154] = 1; //valid
 				end
+				else if (!miss & proc_write) begin
+					if (!miss0)begin
+						nxt_cache0[proc_addr[3:2]][ proc_addr[1:0]*32+31 -: 32] = proc_wdata; //data
+						nxt_cache0[proc_addr[3:2]][153:128] = proc_addr[29:4]; //tags
+						nxt_cache0[proc_addr[3:2]][154] = 1; //dirty
+						nxt_cache0[proc_addr[3:2]][155] = 1; //valid
+					end
+					else if (!miss1) begin
+						nxt_cache1[proc_addr[3:2]][ proc_addr[1:0]*32+31 -: 32] = proc_wdata; //data
+						nxt_cache1[proc_addr[3:2]][153:128] = proc_addr[29:4]; //tags
+						nxt_cache1[proc_addr[3:2]][154] = 1; //dirty
+						nxt_cache1[proc_addr[3:2]][155] = 1; //valid
+					end
+				end         
 			end
 
 			STATE_allocate:begin
 				proc_stall = 1;
 				mem_addr  = proc_addr[29:2];
 				if (mem_ready & !finish)begin
-					nxt_cache[proc_addr[4:2]][127:0] = mem_rdata; //data
-					nxt_cache[proc_addr[4:2]][152:128] = proc_addr[29:5]; //tags
-					nxt_cache[proc_addr[4:2]][153] = 0; //dirty
-					nxt_cache[proc_addr[4:2]][154] = 1; //valid
-					mem_read = 0;
-					mem_write = 0;
-					nxt_finish = 1;
+					if (!cache0[proc_addr[3:2]][156])begin
+						nxt_cache0[proc_addr[3:2]][127:0] = mem_rdata; //data
+						nxt_cache0[proc_addr[3:2]][153:128] = proc_addr[29:4]; //tags
+						nxt_cache0[proc_addr[3:2]][154] = 0; //dirty
+						nxt_cache0[proc_addr[3:2]][155] = 1; //valid
+						nxt_cache0[proc_addr[3:2]][156] = 1;  //lru0;
+						nxt_cache1[proc_addr[3:2]][156] = 0;  //lru1;
+						mem_read = 0;
+						mem_write = 0;
+						nxt_finish = 1;
+					end
+					else begin
+						nxt_cache1[proc_addr[3:2]][127:0] = mem_rdata; //data
+						nxt_cache1[proc_addr[3:2]][153:128] = proc_addr[29:4]; //tags
+						nxt_cache1[proc_addr[3:2]][154] = 0; //dirty
+						nxt_cache1[proc_addr[3:2]][155] = 1; //valid
+						nxt_cache0[proc_addr[3:2]][156] = 0;  //lru0;
+						nxt_cache1[proc_addr[3:2]][156] = 1;  //lru1;
+						mem_read = 0;
+						mem_write = 0;
+						nxt_finish = 1;
+					end
 				end
 				else begin
 					mem_read = 1;
 					mem_write = 0;
 					nxt_finish = 0;
-				end              
+				end
 			end
 
 			STATE_write_back:begin
 				proc_stall = 1;
-				mem_wdata = cache[proc_addr[4:2]][127:0];
-				mem_addr  = { cache[proc_addr[4:2]][152:128] , proc_addr[4:2] };
-				if (mem_ready & !finish)begin
-					nxt_cache[proc_addr[4:2]][154] = 1; //valid
-					nxt_cache[proc_addr[4:2]][153] = 0; //dirty
-					mem_read = 0;
-					mem_write = 0;
-					nxt_finish = 1;
+
+				if (!cache0[proc_addr[3:2]][156])begin
+					mem_wdata = cache0[proc_addr[3:2]][127:0];
+					mem_addr  = { cache0[proc_addr[3:2]][153:128] , proc_addr[3:2] }; 
+					if (mem_ready & !finish)begin
+						nxt_cache0[proc_addr[3:2]][155] = 1; //valid
+						nxt_cache0[proc_addr[3:2]][154] = 0; //dirty
+						nxt_cache0[proc_addr[3:2]][156] = 0;  //lru0; write-back後要read, 順序不變
+						nxt_cache1[proc_addr[3:2]][156] = 1;  //lru1;
+						mem_read = 0;
+						mem_write = 0;
+						nxt_finish = 1;
+					end
+					else begin
+						nxt_cache0[proc_addr[3:2]][155] = 1; //valid
+						nxt_cache0[proc_addr[3:2]][154] = 1; //dirty
+						mem_read = 0;
+						mem_write = 1 ;
+						nxt_finish = 0;
+					end
 				end
-				else  begin
-					mem_read = 0;
-					mem_write = 1;
-					nxt_finish = 0;
+				else begin
+					mem_wdata = cache1[proc_addr[3:2]][127:0];
+					mem_addr  = { cache1[proc_addr[3:2]][153:128] , proc_addr[3:2] }; 
+					if (mem_ready & !finish)begin
+						nxt_cache1[proc_addr[3:2]][155] = 1; //valid
+						nxt_cache1[proc_addr[3:2]][154] = 0; //dirty
+						nxt_cache0[proc_addr[3:2]][156] = 1;  //lru0;
+						nxt_cache1[proc_addr[3:2]][156] = 0;  //lru1;
+						mem_read = 0;
+						mem_write = 0;
+						nxt_finish = 1;
+					end
+					else begin
+						nxt_cache1[proc_addr[3:2]][155] = 1; //valid
+						nxt_cache1[proc_addr[3:2]][154] = 1; //dirty
+						mem_read = 0;
+						mem_write = 1 ;
+						nxt_finish = 0;
+					end
 				end
 			end
-			
+
 			STATE_idle:begin
 				proc_stall = 1;
 			end
@@ -300,14 +385,16 @@
 	always@( posedge clk ) begin
 		if( proc_reset ) begin
 			for (i = 0 ; i < 8 ; i=i+1)begin
-				cache[i] <= 0;
+				cache0[i] <=  0;
+				cache1[i] <=  0;
 			end
 			state <= STATE_idle;
 			finish <= nxt_finish;
 		end
 		else begin
 			for (i = 0; i<8; i=i+1)begin
-				cache[i] <= nxt_cache[i];
+				cache0[i] <= nxt_cache0[i];
+				cache1[i] <= nxt_cache1[i];
 			end
 			state <= nxt_state;
 			finish <= nxt_finish;
@@ -326,6 +413,7 @@
 //5. cache write buffer
 //6. ICACHE 可把write部分刪掉
 //7. 用gate or 相等表示  test == 2'b01 , !test[1] & test[0]
+//8. cache 有乘法部分
 
 module RISCV_Pipeline(
 	clk, rst_n, ICACHE_ren, ICACHE_wen, ICACHE_addr, ICACHE_wdata, ICACHE_stall, ICACHE_rdata,
