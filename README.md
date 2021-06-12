@@ -11,6 +11,11 @@
 9. L2 cache
 10. BrPred
 
+## TO-ASK
+1. Dcache刪除write back部分
+2. Dcache一開始把資料先全給0
+3. 用不到的指令，e.g. >>>
+
 ## Usuage 
 Copy content in the files below into CHIP.v, and run ...
 1. $ncverilog Final_tb.v CHIP.v slow_memory.v +define+hasHazard +access+r
