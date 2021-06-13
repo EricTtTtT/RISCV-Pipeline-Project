@@ -674,8 +674,6 @@
 
 		//========= memory ========= 
 		reg [31:0] read_data_MEM; //read from mem
-		reg [31:0] read_data_WB; 
-
 
 		reg [31:0] wdata_EX; //write mem
 		reg [31:0] wdata_MEM;
@@ -701,8 +699,6 @@
 		//========= wire & reg ==============
 		reg	[2:0]	type;
 		reg [31:0]	write_rd_MEM;
-		reg [31:0]	write_rd_WB;
-		reg [31:0]  register_save, register_save_nxt;
 
 		//========= Wire assignment ==========
 		assign inst_IF = (ctrl_bj_taken|ctrl_jalr_ID)? 32'h00000013:{ICACHE_rdata[7:0],ICACHE_rdata[15:8],ICACHE_rdata[23:16],ICACHE_rdata[31:24]};
@@ -880,17 +876,7 @@
 
 			//rd_w為運算後的值
 			rd_w_EX = (ctrl_jal_EX | ctrl_jalr_EX)? PC_EX+4 : alu_out_EX;
-
-			//mem_to_register (write rd)
-			//write_rd_MEM =  ctrl_memtoreg_MEM? read_data_MEM : rd_w_MEM_real;
-			write_rd_WB =  ctrl_memtoreg_WB? read_data_WB : rd_w_WB;
-			register_save_nxt = register[rd_WB];
-			if (ctrl_regwrite_WB & rd_WB!=0)begin
-				register[rd_WB] = write_rd_WB;
-			end
-
-
-
+			
 			//jalr = rs1 + imme (rs1 forwarded)
 			case(ctrl_FA_j) //實際上只有00,10會成立
 				2'b00: PC_jalr_ID = rs1_data_ID + imme_ID;
@@ -979,12 +965,13 @@
 		integer i;
 		always @(posedge clk )begin
 			if (!rst_n)begin
-				// for (i = 0 ; i<32; i=i+1)begin
-				// 	register[i] <= 0 ;
-				// end
+				for (i = 0 ; i<32; i=i+1)begin
+					register[i] <= 0 ;
+				end
 
 				imme_EX <= 0 ;
 
+				//ctrl
 				ctrl_jalr_EX <= 0;
 				ctrl_jal_EX  <= 0;
 
@@ -1032,139 +1019,70 @@
 
 			end
 			else if (!ICACHE_stall & !DCACHE_stall ) begin
-				// if (ctrl_regwrite_MEM & rd_MEM!=0)begin
-				// 	register[rd_MEM] <= write_rd_MEM; //可用comb??????????????????????????????????????????
-				// end
-				// else begin
-				// 	register[0] <=0;
-				// end
-
-				if (!ctrl_lw_stall)begin
-					imme_EX <= imme_ID;
-
-					ctrl_jalr_EX <= ctrl_jalr_ID; 
-
-					ctrl_jal_EX  <= ctrl_jal_ID; 
-
-					ctrl_memread_EX <= ctrl_memread_ID;
-					ctrl_memread_MEM <= ctrl_memread_EX;
-
-					ctrl_memtoreg_EX <= ctrl_memtoreg_ID;
-					ctrl_memtoreg_MEM <= ctrl_memtoreg_EX;
-					ctrl_memtoreg_WB <= ctrl_memtoreg_MEM;
-
-					ctrl_memwrite_EX <= ctrl_memwrite_ID;
-					ctrl_memwrite_MEM <= ctrl_memwrite_EX;
-
-					ctrl_regwrite_EX <= ctrl_regwrite_ID;
-					ctrl_regwrite_MEM <= ctrl_regwrite_EX;
-					ctrl_regwrite_WB <= ctrl_regwrite_MEM;
-
-					ctrl_ALUSrc_EX <= ctrl_ALUSrc_ID;
+				if (ctrl_regwrite_MEM & rd_MEM!=0)begin
+					register[rd_MEM] <= rd_w_MEM_real; //可用comb??????????????????????????????????????????
 				end
-				else begin //進到EX的東西全部清0
-					imme_EX <= 0;
-
-					ctrl_jalr_EX <= 0; 
-
-					ctrl_jal_EX  <= 0; 
-
-					ctrl_memread_EX <= 0;
-					ctrl_memread_MEM <= ctrl_memread_EX;
-
-					ctrl_memtoreg_EX <= 0;
-					ctrl_memtoreg_MEM <= ctrl_memtoreg_EX;
-					ctrl_memtoreg_WB <= ctrl_memtoreg_MEM;
-
-					ctrl_memwrite_EX <= 0;
-					ctrl_memwrite_MEM <= ctrl_memwrite_EX;
-
-					ctrl_regwrite_EX <= 0;
-					ctrl_regwrite_MEM <= ctrl_regwrite_EX;
-					ctrl_regwrite_WB <= ctrl_regwrite_MEM;
-
-					ctrl_ALUSrc_EX <= 0;
+				else begin
+					register[rd_MEM] <= register[rd_MEM];
 				end
+
+				imme_EX <= (!ctrl_lw_stall)? imme_ID : 0;
+				
+				//ctrl
+				ctrl_jalr_EX <= (!ctrl_lw_stall)? ctrl_jalr_ID : 0; 
+				ctrl_jal_EX  <= (!ctrl_lw_stall)? ctrl_jal_ID : 0; 
+
+				ctrl_memread_EX <= (!ctrl_lw_stall)? ctrl_memread_ID : 0;
+				ctrl_memread_MEM <= ctrl_memread_EX;
+
+				ctrl_memtoreg_EX <= (!ctrl_lw_stall)? ctrl_memtoreg_ID : 0;
+				ctrl_memtoreg_MEM <= ctrl_memtoreg_EX;
+				ctrl_memtoreg_WB <= ctrl_memtoreg_MEM;
+
+				ctrl_memwrite_EX <= (!ctrl_lw_stall)? ctrl_memwrite_ID : 0;
+				ctrl_memwrite_MEM <= ctrl_memwrite_EX;
+
+				ctrl_regwrite_EX <= (!ctrl_lw_stall)? ctrl_regwrite_ID : 0;
+				ctrl_regwrite_MEM <= ctrl_regwrite_EX;
+				ctrl_regwrite_WB <= ctrl_regwrite_MEM;
+
+				ctrl_ALUSrc_EX <= (!ctrl_lw_stall)? ctrl_ALUSrc_ID : 0;
 
 				//memory
 				wdata_MEM <= wdata_EX;
 
 				//inst
-				if (!ctrl_lw_stall)begin
-					inst_ID <= inst_IF;
-				end
-				else begin
-					inst_ID <= inst_ID;
-				end
+				inst_ID <= (!ctrl_lw_stall)? inst_IF : inst_ID;
 
 				//alu
 				alu_out_MEM <= alu_out_EX;
 				alu_out_WB <= alu_out_MEM;
 
-				if (!ctrl_lw_stall)begin
-					alu_ctrl_EX <= alu_ctrl_ID;
-				end
-				else begin
-					alu_ctrl_EX <= 0;
-				end
+				alu_ctrl_EX = (!ctrl_lw_stall)? alu_ctrl_ID : 0;
 
 				//register
-				if (!ctrl_lw_stall)begin
-					rs1_EX <= rs1_ID;			
-					rs2_EX <= rs2_ID;			
-					rd_EX <= rd_ID;
-					rd_MEM <= rd_EX;
-					rd_WB <= rd_MEM;
 				
-					rs1_data_EX <= rs1_data_ID; 
-					rs2_data_EX <= rs2_data_ID; 
+				rs1_EX <= (!ctrl_lw_stall)? rs1_ID : 0;			
+				rs2_EX <= (!ctrl_lw_stall)? rs2_ID : 0;			
+				rd_EX  <= (!ctrl_lw_stall)? rd_ID : 0;
+				rs1_data_EX <= (!ctrl_lw_stall)? rs1_data_ID : 0; 
+				rs2_data_EX <= (!ctrl_lw_stall)? rs2_data_ID : 0; 
 
-
-					read_data_WB <= read_data_MEM;
-					rd_w_MEM <= rd_w_EX;
-					rd_w_WB <= ctrl_memread_MEM? read_data_MEM:rd_w_MEM;  //可用comb??????????????????????????????????????????
-					register_save <= register_save_nxt;
-	
-				end
-				else begin
-					rs1_EX <= 0;			
-					rs2_EX <= 0;			
-					rd_EX <= 0;
-					rd_MEM <= rd_EX;
-					rd_WB <= rd_MEM;
-				
-					rs1_data_EX <= 0; 
-					rs2_data_EX <= 0; 
-
-					read_data_WB <= read_data_MEM;
-					rd_w_MEM <= rd_w_EX;
-					rd_w_WB <= ctrl_memread_MEM? read_data_MEM:rd_w_MEM;
-					register_save <= register_save_nxt;
-				end
+				rd_MEM <= rd_EX;
+				rd_WB <= rd_MEM;
+				rd_w_MEM <= rd_w_EX;
+				rd_w_WB <= rd_w_MEM_real; 
 
 				//PC
-				if (!ctrl_lw_stall)begin
-					PC_ID <= PC;
-					PC_EX <= PC_ID;
-
-					PC <= PC_nxt;
-				end
-				else begin
-					PC_ID <= PC_ID;
-					PC_EX <= 0;
-
-					PC <= PC;
-				end
+				PC_ID <= (!ctrl_lw_stall)? PC : PC_ID;
+				PC_EX <= (!ctrl_lw_stall)? PC_ID : 0;
+				PC <= (!ctrl_lw_stall)? PC_nxt : PC;
 			end
 			//============ stall ================
 			else begin 
-				// if (ctrl_regwrite_MEM & rd_MEM!=0)begin
-				// 	register[rd_MEM] <= register[rd_MEM];
-				// end
-				// else begin
-				// 	register[0] <=0;
-				// end
+				register[rd_MEM] <= register[rd_MEM];
 
+				//ctrl
 				ctrl_jalr_EX <= ctrl_jalr_EX;
 				ctrl_jal_EX  <= ctrl_jal_EX; 
 
@@ -1183,7 +1101,6 @@
 				ctrl_regwrite_WB <= ctrl_regwrite_WB;
 
 				ctrl_ALUSrc_EX <= ctrl_ALUSrc_EX;
-
 
 				//inst
 				inst_ID <= inst_ID;
@@ -1205,7 +1122,6 @@
 			
 				rs1_data_EX <= rs1_data_EX; 
 				rs2_data_EX <= rs2_data_EX; 
-
 
 				rd_w_MEM <= rd_w_MEM;
 				rd_w_WB <= rd_w_WB;
