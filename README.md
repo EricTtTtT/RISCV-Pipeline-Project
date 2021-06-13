@@ -8,8 +8,9 @@
 5. ICACHE 把write部分刪掉
 6. K-map 化簡 !test[1] & test[0]
 8. cache 有乘法部分，用mux改掉。([proc_addr[1:0]*32+31 -: 32];
-9. L2 cache
-10. BrPred
+9. ctrl_regwrite_WB & rd_WB!=0 可改
+10. L2 cache
+11. BrPred
 
 ## TO-ASK
 1. Dcache刪除write back部分
