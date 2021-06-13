@@ -121,10 +121,22 @@
 	endmodule
 //================= cache ============================
 	module cache(
-		clk, proc_reset, proc_read, proc_write, proc_addr, proc_rdata, proc_wdata, proc_stall,
-						,mem_read, mem_write, mem_addr, mem_wdata, mem_rdata, mem_ready
-						,clear
+		clk,
+		proc_reset,
+		proc_read,
+		proc_write,
+		proc_addr,
+		proc_rdata,
+		proc_wdata,
+		proc_stall,
+		mem_read,
+		mem_write,
+		mem_addr,
+		mem_rdata,
+		mem_wdata,
+		mem_ready
 	);
+		
 	//==== input/output definition ============================
 		input          clk;
 		// processor interface
@@ -138,12 +150,11 @@
 		input  [127:0] mem_rdata;
 		input          mem_ready;
 		output reg         mem_read, mem_write;
-		output reg [31:4] mem_addr;
+		output reg [27:0] mem_addr;
 		output reg [127:0] mem_wdata;
 		
-		input clear;
 	//==== wire/reg definition ================================
-
+		
 	parameter STATE_compare_tag = 2'b00;
 	parameter STATE_write_back = 2'b01;
 	parameter STATE_allocate = 2'b10;
@@ -151,35 +162,69 @@
 
 	integer i;
 
-	reg [154:0] cache [0:7]; // "1" bit valid ,dirty, "25" bits tags, "128" bits data. =152 bits, 8 = 2^3 entries
-	reg [154:0] nxt_cache [0:7]; 
+	reg [156:0] cache0 [0:3]; // "1" bit lru, "1" bit valid, "1"bit dirty, "26" bits tags, "128" bits data. =157 bits
+	reg [156:0] cache1 [0:3]; // "1" bit lru, "1" bit valid, "1"bit dirty, "26" bits tags, "128" bits data. =157 bits
+	reg [156:0] nxt_cache0 [0:3]; // "1" bit lru, "1" bit valid, "1"bit dirty, "26" bits tags, "128" bits data. =157 bits
+	reg [156:0] nxt_cache1 [0:3]; // "1" bit lru, "1" bit valid, "1"bit dirty, "26" bits tags, "128" bits data. =157 bits
+
 	reg [1:0] state;
 	reg [1:0] nxt_state;
-	//wire [2:0] blocks; //8 blocks
-	wire dirty;
-	wire valid;
-	wire miss;
-
-	//assign  blocks = proc_addr[4:2];
-	assign dirty = cache[proc_addr[4:2]][153];
-	assign valid = cache[proc_addr[4:2]][154];
-	assign miss = !(cache[proc_addr[4:2]][154] & (cache[proc_addr[4:2]][152:128] == proc_addr[29:5]));
-
 	reg finish;
 	reg nxt_finish;
+
+	wire lru0; //0=優先
+	wire lru1;
+	//wire [1:0] sets; //4 sets
+	wire valid0;
+	wire valid1;
+	wire dirty;
+	wire dirty0;
+	wire dirty1;
+	wire miss;
+	wire miss0;
+	wire miss1;
+
+	//assign sets = proc_addr[3:2];
+	assign lru0 = cache0[proc_addr[3:2]][156];
+	assign lru1 = cache1[proc_addr[3:2]][156];
+	assign valid0 = cache0[proc_addr[3:2]][155];
+	assign valid1 = cache1[proc_addr[3:2]][155];
+	assign dirty0 = cache0[proc_addr[3:2]][154];
+	assign dirty1 = cache1[proc_addr[3:2]][154];
+	assign miss0 = !( cache0[proc_addr[3:2]][155] & (cache0[proc_addr[3:2]][153:128] == proc_addr[29:4]));
+	assign miss1 = !( cache1[proc_addr[3:2]][155] & (cache1[proc_addr[3:2]][153:128] == proc_addr[29:4]));
+	assign dirty = cache0[proc_addr[3:2]][154] | cache1[proc_addr[3:2]][154];  // dirty0 | dirty1
+	assign miss = miss0 & miss1;  // == hit1 | hit2
 
 	//==== combinational circuit ==============================
 
 	always @(*)begin
 		case(state)
 			STATE_compare_tag:begin
-				if (miss & !dirty)begin //not dirty
+				if (miss & !dirty)begin //clean
 					nxt_state = STATE_allocate;
 				end
-				else if (miss & dirty ) begin //is miss and dirty
-					nxt_state = STATE_write_back;
+
+				else if (miss & !dirty0 ) begin //is miss and 第一排!dirty
+					if (!lru0)begin             //第一排的優先的話就allocate
+						nxt_state = STATE_allocate;
+					end
+					else begin                  //不優先的話就先write_back另一邊，接著再allocate，
+						nxt_state = STATE_write_back;
+					end
 				end
 
+				else if (miss & !dirty1 ) begin //is miss and dirty
+					if (!lru1)begin
+						nxt_state = STATE_allocate;
+					end
+					else begin
+						nxt_state = STATE_write_back;
+					end
+				end
+				else if (miss & dirty)begin
+					nxt_state = STATE_write_back;
+				end
 				else begin
 					nxt_state = STATE_compare_tag;
 				end
@@ -206,89 +251,129 @@
 			STATE_idle:begin
 				nxt_state = STATE_compare_tag;
 			end
-
 		endcase
 	end
 
 	always @(*)begin
-		mem_wdata = 0;
-		proc_rdata = 0; //hit
-		mem_addr  = 0;
+		proc_rdata = 0 ;
+		nxt_finish = 0 ;
 		for (i = 0; i<8; i=i+1)begin
-			nxt_cache[i] = cache[i];
+			nxt_cache0[i] = cache0[i];
+			nxt_cache1[i] = cache1[i];
 		end
-		nxt_finish = 0;
+		mem_wdata = 0;
+		mem_addr  = 0;
 		mem_read = 0;
 		mem_write = 0;
-
+		
 		case(state)
 			STATE_compare_tag:begin
 				if (miss) proc_stall=1;
 				else proc_stall =0;
-				
-				if (!miss & proc_read)begin // valid & hit(tags)
-					proc_rdata = cache[proc_addr[4:2]][ proc_addr[1:0]*32+31 -: 32]; //hit
-				end
-				else if (!miss & proc_write ) begin
-					///////寫回去
-					mem_addr  = proc_addr[29:2];
-					mem_wdata = proc_wdata;
-					if (mem_ready & !finish)begin
-						mem_read = 0;
-						mem_write = 0;
-						nxt_finish = 1;
+			
+				if (!miss & proc_read)begin
+					if (!miss0)begin
+						proc_rdata = cache0[proc_addr[3:2]][ proc_addr[1:0]*32+31 -: 32]; //hit
 					end
-					else begin
-						proc_stall = 1;
-						mem_read = 0;
-						mem_write = 1;
-						nxt_finish = 0;
+					else if (!miss1)begin
+						proc_rdata = cache1[proc_addr[3:2]][ proc_addr[1:0]*32+31 -: 32]; //hit
 					end
-					///////
-					nxt_cache[proc_addr[4:2]][ proc_addr[1:0]*32+31 -: 32] = proc_wdata; //data
-					nxt_cache[proc_addr[4:2]][152:128] = proc_addr[29:5]; //tags
-					nxt_cache[proc_addr[4:2]][153] = 1; //dirty
-					nxt_cache[proc_addr[4:2]][154] = 1; //valid
 				end
+				else if (!miss & proc_write) begin
+					if (!miss0)begin
+						nxt_cache0[proc_addr[3:2]][ proc_addr[1:0]*32+31 -: 32] = proc_wdata; //data
+						nxt_cache0[proc_addr[3:2]][153:128] = proc_addr[29:4]; //tags
+						nxt_cache0[proc_addr[3:2]][154] = 1; //dirty
+						nxt_cache0[proc_addr[3:2]][155] = 1; //valid
+					end
+					else if (!miss1) begin
+						nxt_cache1[proc_addr[3:2]][ proc_addr[1:0]*32+31 -: 32] = proc_wdata; //data
+						nxt_cache1[proc_addr[3:2]][153:128] = proc_addr[29:4]; //tags
+						nxt_cache1[proc_addr[3:2]][154] = 1; //dirty
+						nxt_cache1[proc_addr[3:2]][155] = 1; //valid
+					end
+				end         
 			end
 
 			STATE_allocate:begin
 				proc_stall = 1;
 				mem_addr  = proc_addr[29:2];
 				if (mem_ready & !finish)begin
-					nxt_cache[proc_addr[4:2]][127:0] = mem_rdata; //data
-					nxt_cache[proc_addr[4:2]][152:128] = proc_addr[29:5]; //tags
-					nxt_cache[proc_addr[4:2]][153] = 0; //dirty
-					nxt_cache[proc_addr[4:2]][154] = 1; //valid
-					mem_read = 0;
-					mem_write = 0;
-					nxt_finish = 1;
+					if (!cache0[proc_addr[3:2]][156])begin
+						nxt_cache0[proc_addr[3:2]][127:0] = mem_rdata; //data
+						nxt_cache0[proc_addr[3:2]][153:128] = proc_addr[29:4]; //tags
+						nxt_cache0[proc_addr[3:2]][154] = 0; //dirty
+						nxt_cache0[proc_addr[3:2]][155] = 1; //valid
+						nxt_cache0[proc_addr[3:2]][156] = 1;  //lru0;
+						nxt_cache1[proc_addr[3:2]][156] = 0;  //lru1;
+						mem_read = 0;
+						mem_write = 0;
+						nxt_finish = 1;
+					end
+					else begin
+						nxt_cache1[proc_addr[3:2]][127:0] = mem_rdata; //data
+						nxt_cache1[proc_addr[3:2]][153:128] = proc_addr[29:4]; //tags
+						nxt_cache1[proc_addr[3:2]][154] = 0; //dirty
+						nxt_cache1[proc_addr[3:2]][155] = 1; //valid
+						nxt_cache0[proc_addr[3:2]][156] = 0;  //lru0;
+						nxt_cache1[proc_addr[3:2]][156] = 1;  //lru1;
+						mem_read = 0;
+						mem_write = 0;
+						nxt_finish = 1;
+					end
 				end
 				else begin
 					mem_read = 1;
 					mem_write = 0;
 					nxt_finish = 0;
-				end              
+				end
 			end
 
 			STATE_write_back:begin
 				proc_stall = 1;
-				mem_wdata = cache[proc_addr[4:2]][127:0];
-				mem_addr  = { cache[proc_addr[4:2]][152:128] , proc_addr[4:2] };
-				if (mem_ready & !finish)begin
-					nxt_cache[proc_addr[4:2]][154] = 1; //valid
-					nxt_cache[proc_addr[4:2]][153] = 0; //dirty
-					mem_read = 0;
-					mem_write = 0;
-					nxt_finish = 1;
+
+				if (!cache0[proc_addr[3:2]][156])begin
+					mem_wdata = cache0[proc_addr[3:2]][127:0];
+					mem_addr  = { cache0[proc_addr[3:2]][153:128] , proc_addr[3:2] }; 
+					if (mem_ready & !finish)begin
+						nxt_cache0[proc_addr[3:2]][155] = 1; //valid
+						nxt_cache0[proc_addr[3:2]][154] = 0; //dirty
+						nxt_cache0[proc_addr[3:2]][156] = 0;  //lru0; write-back後要read, 順序不變
+						nxt_cache1[proc_addr[3:2]][156] = 1;  //lru1;
+						mem_read = 0;
+						mem_write = 0;
+						nxt_finish = 1;
+					end
+					else begin
+						nxt_cache0[proc_addr[3:2]][155] = 1; //valid
+						nxt_cache0[proc_addr[3:2]][154] = 1; //dirty
+						mem_read = 0;
+						mem_write = 1 ;
+						nxt_finish = 0;
+					end
 				end
-				else  begin
-					mem_read = 0;
-					mem_write = 1;
-					nxt_finish = 0;
+				else begin
+					mem_wdata = cache1[proc_addr[3:2]][127:0];
+					mem_addr  = { cache1[proc_addr[3:2]][153:128] , proc_addr[3:2] }; 
+					if (mem_ready & !finish)begin
+						nxt_cache1[proc_addr[3:2]][155] = 1; //valid
+						nxt_cache1[proc_addr[3:2]][154] = 0; //dirty
+						nxt_cache0[proc_addr[3:2]][156] = 1;  //lru0;
+						nxt_cache1[proc_addr[3:2]][156] = 0;  //lru1;
+						mem_read = 0;
+						mem_write = 0;
+						nxt_finish = 1;
+					end
+					else begin
+						nxt_cache1[proc_addr[3:2]][155] = 1; //valid
+						nxt_cache1[proc_addr[3:2]][154] = 1; //dirty
+						mem_read = 0;
+						mem_write = 1 ;
+						nxt_finish = 0;
+					end
 				end
 			end
-			
+
 			STATE_idle:begin
 				proc_stall = 1;
 			end
@@ -300,14 +385,16 @@
 	always@( posedge clk ) begin
 		if( proc_reset ) begin
 			for (i = 0 ; i < 8 ; i=i+1)begin
-				cache[i] <= 0;
+				cache0[i] <=  0;
+				cache1[i] <=  0;
 			end
 			state <= STATE_idle;
 			finish <= nxt_finish;
 		end
 		else begin
 			for (i = 0; i<8; i=i+1)begin
-				cache[i] <= nxt_cache[i];
+				cache0[i] <= nxt_cache0[i];
+				cache1[i] <= nxt_cache1[i];
 			end
 			state <= nxt_state;
 			finish <= nxt_finish;
@@ -628,7 +715,6 @@ module RISCV_Pipeline(
 			2'b10: compare_rs2 = rd_w_MEM_real;
 			default: compare_rs2 = rs2_data_ID;
 		endcase
-
     end
 
 	always @(*)begin
@@ -650,17 +736,7 @@ module RISCV_Pipeline(
 		PC_B_IF = PC + imme_IF;
 	end
 
-	always @(*) begin
-		if (state==state_t1|state==state_t2)begin
-			PC_nxt = ctrl_jalr_ID? PC_jalr_ID : ctrl_jal_ID? PC_B_ID : (ctrl_beq_IF|ctrl_bne_IF)? PC_B_IF : PC+4;
-			inst_IF = ( ((ctrl_beq_ID|ctrl_bne_ID)&!taken) |ctrl_jal_ID|ctrl_jalr_ID)? 32'd0 : {ICACHE_rdata[7:0],ICACHE_rdata[15:8],ICACHE_rdata[23:16],ICACHE_rdata[31:24]};
-		end
-		else begin
-			PC_nxt = ctrl_jalr_ID? PC_jalr_ID : ctrl_jal_ID? PC_B_ID : PC+4;
-			inst_IF = ( ((ctrl_beq_ID|ctrl_bne_ID)&taken) |ctrl_jal_ID|ctrl_jalr_ID)? 32'd0 : {ICACHE_rdata[7:0],ICACHE_rdata[15:8],ICACHE_rdata[23:16],ICACHE_rdata[31:24]};
-		end		
-	end
-
+	//============= FSM ======================
 	always @(*)begin
 		case (state)
 			state_t1:begin
@@ -702,6 +778,17 @@ module RISCV_Pipeline(
 		endcase
 	end
 
+	//============= PC_nxt, inst_IF ======================
+	always @(*) begin
+		if (state==state_t1|state==state_t2)begin
+			PC_nxt = ctrl_jalr_ID? PC_jalr_ID : ctrl_jal_ID? PC_B_ID : (ctrl_beq_IF|ctrl_bne_IF)? PC_B_IF : PC+4;
+			inst_IF = ( ((ctrl_beq_ID|ctrl_bne_ID)&!taken) |ctrl_jal_ID|ctrl_jalr_ID)? 32'd0 : {ICACHE_rdata[7:0],ICACHE_rdata[15:8],ICACHE_rdata[23:16],ICACHE_rdata[31:24]};
+		end
+		else begin
+			PC_nxt = ctrl_jalr_ID? PC_jalr_ID : ctrl_jal_ID? PC_B_ID : PC+4;
+			inst_IF = ( ((ctrl_beq_ID|ctrl_bne_ID)&taken) |ctrl_jal_ID|ctrl_jalr_ID)? 32'd0 : {ICACHE_rdata[7:0],ICACHE_rdata[15:8],ICACHE_rdata[23:16],ICACHE_rdata[31:24]};
+		end		
+	end
 
 	//========= hazard ===========
 	always @(*)begin
@@ -749,7 +836,6 @@ module RISCV_Pipeline(
 		else begin
 			ctrl_FB = 2'b00;
 		end
-
 
 		//load use hazard
 		ctrl_lw_stall = (ctrl_memread_EX & (rd_EX==rs1_ID | rd_EX==rs2_ID));
@@ -822,131 +908,60 @@ module RISCV_Pipeline(
                 register[rd_MEM] <= write_rd_MEM; //可用comb??????????????????????????????????????????
             end
             else begin
-                register[0] <=0;
+                register[rd_MEM] <=register[rd_MEM];
             end
 
-			if (!ctrl_lw_stall)begin
-				imme_EX <= imme_ID;
+			//ctrl
+			ctrl_beq_ID <= (!ctrl_lw_stall)? ctrl_beq_IF : ctrl_beq_ID;
+			ctrl_bne_ID <= (!ctrl_lw_stall)? ctrl_bne_IF : ctrl_beq_ID;
+			ctrl_jalr_EX <= (!ctrl_lw_stall)? ctrl_jalr_ID : 0; 
+			ctrl_jal_EX  <= (!ctrl_lw_stall)? ctrl_jal_ID : 0; 
 
-				ctrl_beq_ID <= ctrl_beq_IF;
-				ctrl_bne_ID <= ctrl_bne_IF;
+			ctrl_memread_EX <= (!ctrl_lw_stall)? ctrl_memread_ID : 0;
+			ctrl_memread_MEM <= ctrl_memread_EX;
 
-				ctrl_jalr_EX <= ctrl_jalr_ID; 
+			ctrl_memtoreg_EX <= (!ctrl_lw_stall)? ctrl_memtoreg_ID : 0;
+			ctrl_memtoreg_MEM <= ctrl_memtoreg_EX;
+			ctrl_memtoreg_WB <= ctrl_memtoreg_MEM;
 
-				ctrl_jal_EX  <= ctrl_jal_ID; 
+			ctrl_memwrite_EX <= (!ctrl_lw_stall)? ctrl_memwrite_ID : 0;
+			ctrl_memwrite_MEM <= ctrl_memwrite_EX;
 
-				ctrl_memread_EX <= ctrl_memread_ID;
-				ctrl_memread_MEM <= ctrl_memread_EX;
+			ctrl_regwrite_EX <= (!ctrl_lw_stall)? ctrl_regwrite_ID : 0;
+			ctrl_regwrite_MEM <= ctrl_regwrite_EX;
+			ctrl_regwrite_WB <= ctrl_regwrite_MEM;
 
-				ctrl_memtoreg_EX <= ctrl_memtoreg_ID;
-				ctrl_memtoreg_MEM <= ctrl_memtoreg_EX;
-				ctrl_memtoreg_WB <= ctrl_memtoreg_MEM;
-
-				ctrl_memwrite_EX <= ctrl_memwrite_ID;
-				ctrl_memwrite_MEM <= ctrl_memwrite_EX;
-
-				ctrl_regwrite_EX <= ctrl_regwrite_ID;
-				ctrl_regwrite_MEM <= ctrl_regwrite_EX;
-				ctrl_regwrite_WB <= ctrl_regwrite_MEM;
-
-				ctrl_ALUSrc_EX <= ctrl_ALUSrc_ID;
-			end
-			else begin //進到EX的東西全部清0
-				imme_EX <= 0;
-
-				ctrl_beq_ID <= ctrl_beq_IF;
-				ctrl_bne_ID <= ctrl_bne_IF;
-
-				ctrl_jalr_EX <= 0; 
-
-				ctrl_jal_EX  <= 0; 
-
-				ctrl_memread_EX <= 0;
-				ctrl_memread_MEM <= ctrl_memread_EX;
-
-				ctrl_memtoreg_EX <= 0;
-				ctrl_memtoreg_MEM <= ctrl_memtoreg_EX;
-				ctrl_memtoreg_WB <= ctrl_memtoreg_MEM;
-
-				ctrl_memwrite_EX <= 0;
-				ctrl_memwrite_MEM <= ctrl_memwrite_EX;
-
-				ctrl_regwrite_EX <= 0;
-				ctrl_regwrite_MEM <= ctrl_regwrite_EX;
-				ctrl_regwrite_WB <= ctrl_regwrite_MEM;
-
-				ctrl_ALUSrc_EX <= 0;
-			end
+			ctrl_ALUSrc_EX <= (!ctrl_lw_stall)? ctrl_ALUSrc_ID : 0;
 
 			//memory
 			wdata_MEM <= wdata_EX;
 
 			//inst
-			if (!ctrl_lw_stall)begin
-				inst_ID <= inst_IF;
-			end
-			else begin
-				inst_ID <= inst_ID;
-			end
+			inst_ID <= (!ctrl_lw_stall)? inst_IF : inst_ID;
 
 			//alu
 			alu_out_MEM <= alu_out_EX;
 			alu_out_WB <= alu_out_MEM;
-
-			if (!ctrl_lw_stall)begin
-				alu_ctrl_EX <= alu_ctrl_ID;
-			end
-			else begin
-				alu_ctrl_EX <= 0;
-			end
+			
+			alu_ctrl_EX = (!ctrl_lw_stall)? alu_ctrl_ID : 0;
 
 			//register
-			if (!ctrl_lw_stall)begin
-				rs1_EX <= rs1_ID;			
-				rs2_EX <= rs2_ID;			
-				rd_EX <= rd_ID;
-				rd_MEM <= rd_EX;
-				rd_WB <= rd_MEM;
-			
-				rs1_data_EX <= rs1_data_ID; 
-				rs2_data_EX <= rs2_data_ID; 
+			rs1_EX <= (!ctrl_lw_stall)? rs1_ID : 0;			
+			rs2_EX <= (!ctrl_lw_stall)? rs2_ID : 0;			
+			rd_EX  <= (!ctrl_lw_stall)? rd_ID : 0;
+			rs1_data_EX <= (!ctrl_lw_stall)? rs1_data_ID : 0; 
+			rs2_data_EX <= (!ctrl_lw_stall)? rs2_data_ID : 0; 
 
-
-				rd_w_MEM <= rd_w_EX;
-				rd_w_WB <= ctrl_memread_MEM? read_data_MEM:rd_w_MEM;  //可用comb??????????????????????????????????????????
-
-			end
-			else begin
-				rs1_EX <= 0;			
-				rs2_EX <= 0;			
-				rd_EX <= 0;
-				rd_MEM <= rd_EX;
-				rd_WB <= rd_MEM;
-			
-				rs1_data_EX <= 0; 
-				rs2_data_EX <= 0; 
-
-
-				rd_w_MEM <= rd_w_EX;
-				rd_w_WB <= ctrl_memread_MEM? read_data_MEM:rd_w_MEM;
-			end
+			rd_MEM <= rd_EX;
+			rd_WB <= rd_MEM;
+			rd_w_MEM <= rd_w_EX;
+			rd_w_WB <= rd_w_MEM_real; 
 
 			//PC
-			if (!ctrl_lw_stall)begin
-				PC_ID <= PC;
-				PC_EX <= PC_ID;
-				PC_B <= PC_B_nxt;
-
-				//PC <= ((ctrl_beq_ID|ctrl_bne_ID)&!taken)? PC_B : PC_nxt;
-				PC <=  PC_nxt;
-			end
-			else begin
-				PC_ID <= PC_ID;
-				PC_EX <= 0;
-
-				PC <= PC;
-			end
-
+			PC_ID <= (!ctrl_lw_stall)? PC : PC_ID;
+			PC_EX <= (!ctrl_lw_stall)? PC_ID : 0;
+			PC_B <= (!ctrl_lw_stall)? PC_B_nxt : PC_B;
+			PC <= (!ctrl_lw_stall)? PC_nxt : PC;
 			state <= nxt_state;
 
         end
@@ -1012,65 +1027,8 @@ module RISCV_Pipeline(
 			PC_EX <= PC_EX;
             PC <= PC;
 			
-            ICACHE_addr <= PC[31:2]; //fect instruction //bits??? PC[31:2]=ICACHE_addr
-
 			state <= state;
 		end
     end
 
 endmodule
-
-
-
-
-
-
-
-// ADD		0000000 rs2 rs1 000 rd 0110011	R-type	+
-// SUB		0100000 rs2 rs1 000 rd 0110011	R-type	-
-// AND		0000000 rs2 rs1 111 rd 0110011	R-type	&
-// OR		0000000 rs2 rs1 110 rd 0110011	R-type	|
-// XOR		0000000 rs2 rs1 100 rd 0110011	R-type	^
-// SLT		0000000 rs2 rs1 010 rd 0110011	R-type	<
-
-// ADDI	imme[11:0] rs1 000 rd 0010011	I-type	+
-// ANDI	imme[11:0] rs1 111 rd 0010011	I-type	&
-// ORI		imme[11:0] rs1 110 rd 0010011	I-type	|
-// XORI	imme[11:0] rs1 100 rd 0010011	I-type	^
-// SLLI	0000000 sh rs1 001 rd 0010011	I-type	<<
-// SRAI	0100000 sh rs1 101 rd 0010011	I-type	>>>
-// SRLI	0000000 sh rs1 101 rd 0010011	I-type	>>
-// SLTI	imme[11:0] rs1 010 rd 0010011	I-type	<
-// LW		imme[11:0] rs1 010 rd 0000011	I-type	+
-// JALR	imme[11:0] rs1 000 rd 1100111	I-type	+
-// NOP(addi)imm[11:0] rs1 000 rd 0010011	I-type	+
-
-// BEQ		imme[12|10:5] rs2 rs1 000 imm[4:1|11] 1100011	B-type	- 
-// BNE		imme[12|10:5] rs2 rs1 001 imm[4:1|11] 1100011	B-type	- 
-
-// JAL		imme[20|10:1|11|19:12] rd 1101111				J-type	+
-
-// SW		imme[11:5] rs2 rs1 010 imm[4:0] 0100011			S-type +
-
-
-// ADD		0000000 rs2 rs1 000 rd 0110011	R-type
-// ADDI	imm[11:0] rs1 000 rd 0010011	I-type
-// SUB		0100000 rs2 rs1 000 rd 0110011	R-type
-// AND		0000000 rs2 rs1 111 rd 0110011	R-type
-// ANDI	imme[11:0] rs1 111 rd 0010011	I-type
-// OR		0000000 rs2 rs1 110 rd 0110011	R-type
-// ORI		imme[11:0] rs1 110 rd 0010011	I-type
-// XOR		0000000 rs2 rs1 100 rd 0110011	R-type
-// XORI	imme[11:0] rs1 100 rd 0010011	I-type
-// SLLI	0000000 sh rs1 001 rd 0010011	I-type
-// SRAI	0100000 sh rs1 101 rd 0010011	I-type
-// SRLI	0000000 sh rs1 101 rd 0010011	I-type
-// SLT		0000000 rs2 rs1 010 rd 0110011	R-type
-// SLTI	imme[11:0] rs1 010 rd 0010011	I-type
-// BEQ		imme[12|10:5] rs2 rs1 000 imm[4:1|11] 110011	B-type
-// BNE		imme[12|10:5] rs2 rs1 001 imm[4:1|11] 110011	B-type
-// JAL		imme[20|10:1|11|19:12] rd 1101111				J-type
-// JALR	imme[11:0] rs1 000 rd 110011
-// LW		imm[11:0] rs1 010 rd 0000011	I-type
-// SW		imme[11:5] rs2 rs1 010 imm[4:0] 0100011			S-type
-// NOP(addi)imm[11:0] rs1 000 rd 0010011	I-type
