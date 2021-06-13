@@ -121,10 +121,22 @@
 	endmodule
 //================= cache ============================
 	module cache(
-		clk, proc_reset, proc_read, proc_write, proc_addr, proc_rdata, proc_wdata, proc_stall,
-						,mem_read, mem_write, mem_addr, mem_wdata, mem_rdata, mem_ready
-						,clear
+		clk,
+		proc_reset,
+		proc_read,
+		proc_write,
+		proc_addr,
+		proc_rdata,
+		proc_wdata,
+		proc_stall,
+		mem_read,
+		mem_write,
+		mem_addr,
+		mem_rdata,
+		mem_wdata,
+		mem_ready
 	);
+		
 	//==== input/output definition ============================
 		input          clk;
 		// processor interface
@@ -138,12 +150,11 @@
 		input  [127:0] mem_rdata;
 		input          mem_ready;
 		output reg         mem_read, mem_write;
-		output reg [31:4] mem_addr;
+		output reg [27:0] mem_addr;
 		output reg [127:0] mem_wdata;
 		
-		input clear;
 	//==== wire/reg definition ================================
-
+		
 	parameter STATE_compare_tag = 2'b00;
 	parameter STATE_write_back = 2'b01;
 	parameter STATE_allocate = 2'b10;
@@ -151,35 +162,69 @@
 
 	integer i;
 
-	reg [154:0] cache [0:7]; // "1" bit valid ,dirty, "25" bits tags, "128" bits data. =152 bits, 8 = 2^3 entries
-	reg [154:0] nxt_cache [0:7]; 
+	reg [156:0] cache0 [0:3]; // "1" bit lru, "1" bit valid, "1"bit dirty, "26" bits tags, "128" bits data. =157 bits
+	reg [156:0] cache1 [0:3]; // "1" bit lru, "1" bit valid, "1"bit dirty, "26" bits tags, "128" bits data. =157 bits
+	reg [156:0] nxt_cache0 [0:3]; // "1" bit lru, "1" bit valid, "1"bit dirty, "26" bits tags, "128" bits data. =157 bits
+	reg [156:0] nxt_cache1 [0:3]; // "1" bit lru, "1" bit valid, "1"bit dirty, "26" bits tags, "128" bits data. =157 bits
+
 	reg [1:0] state;
 	reg [1:0] nxt_state;
-	//wire [2:0] blocks; //8 blocks
-	wire dirty;
-	wire valid;
-	wire miss;
-
-	//assign  blocks = proc_addr[4:2];
-	assign dirty = cache[proc_addr[4:2]][153];
-	assign valid = cache[proc_addr[4:2]][154];
-	assign miss = !(cache[proc_addr[4:2]][154] & (cache[proc_addr[4:2]][152:128] == proc_addr[29:5]));
-
 	reg finish;
 	reg nxt_finish;
+
+	wire lru0; //0=優先
+	wire lru1;
+	//wire [1:0] sets; //4 sets
+	wire valid0;
+	wire valid1;
+	wire dirty;
+	wire dirty0;
+	wire dirty1;
+	wire miss;
+	wire miss0;
+	wire miss1;
+
+	//assign sets = proc_addr[3:2];
+	assign lru0 = cache0[proc_addr[3:2]][156];
+	assign lru1 = cache1[proc_addr[3:2]][156];
+	assign valid0 = cache0[proc_addr[3:2]][155];
+	assign valid1 = cache1[proc_addr[3:2]][155];
+	assign dirty0 = cache0[proc_addr[3:2]][154];
+	assign dirty1 = cache1[proc_addr[3:2]][154];
+	assign miss0 = !( cache0[proc_addr[3:2]][155] & (cache0[proc_addr[3:2]][153:128] == proc_addr[29:4]));
+	assign miss1 = !( cache1[proc_addr[3:2]][155] & (cache1[proc_addr[3:2]][153:128] == proc_addr[29:4]));
+	assign dirty = cache0[proc_addr[3:2]][154] | cache1[proc_addr[3:2]][154];  // dirty0 | dirty1
+	assign miss = miss0 & miss1;  // == hit1 | hit2
 
 	//==== combinational circuit ==============================
 
 	always @(*)begin
 		case(state)
 			STATE_compare_tag:begin
-				if (miss & !dirty)begin //not dirty
+				if (miss & !dirty)begin //clean
 					nxt_state = STATE_allocate;
 				end
-				else if (miss & dirty ) begin //is miss and dirty
-					nxt_state = STATE_write_back;
+
+				else if (miss & !dirty0 ) begin //is miss and 第一排!dirty
+					if (!lru0)begin             //第一排的優先的話就allocate
+						nxt_state = STATE_allocate;
+					end
+					else begin                  //不優先的話就先write_back另一邊，接著再allocate，
+						nxt_state = STATE_write_back;
+					end
 				end
 
+				else if (miss & !dirty1 ) begin //is miss and dirty
+					if (!lru1)begin
+						nxt_state = STATE_allocate;
+					end
+					else begin
+						nxt_state = STATE_write_back;
+					end
+				end
+				else if (miss & dirty)begin
+					nxt_state = STATE_write_back;
+				end
 				else begin
 					nxt_state = STATE_compare_tag;
 				end
@@ -206,89 +251,129 @@
 			STATE_idle:begin
 				nxt_state = STATE_compare_tag;
 			end
-
 		endcase
 	end
 
 	always @(*)begin
-		mem_wdata = 0;
-		proc_rdata = 0; //hit
-		mem_addr  = 0;
+		proc_rdata = 0 ;
+		nxt_finish = 0 ;
 		for (i = 0; i<8; i=i+1)begin
-			nxt_cache[i] = cache[i];
+			nxt_cache0[i] = cache0[i];
+			nxt_cache1[i] = cache1[i];
 		end
-		nxt_finish = 0;
+		mem_wdata = 0;
+		mem_addr  = 0;
 		mem_read = 0;
 		mem_write = 0;
-
+		
 		case(state)
 			STATE_compare_tag:begin
 				if (miss) proc_stall=1;
 				else proc_stall =0;
-				
-				if (!miss & proc_read)begin // valid & hit(tags)
-					proc_rdata = cache[proc_addr[4:2]][ proc_addr[1:0]*32+31 -: 32]; //hit
-				end
-				else if (!miss & proc_write ) begin
-					///////寫回去
-					mem_addr  = proc_addr[29:2];
-					mem_wdata = proc_wdata;
-					if (mem_ready & !finish)begin
-						mem_read = 0;
-						mem_write = 0;
-						nxt_finish = 1;
+			
+				if (!miss & proc_read)begin
+					if (!miss0)begin
+						proc_rdata = cache0[proc_addr[3:2]][ proc_addr[1:0]*32+31 -: 32]; //hit
 					end
-					else begin
-						proc_stall = 1;
-						mem_read = 0;
-						mem_write = 1;
-						nxt_finish = 0;
+					else if (!miss1)begin
+						proc_rdata = cache1[proc_addr[3:2]][ proc_addr[1:0]*32+31 -: 32]; //hit
 					end
-					///////
-					nxt_cache[proc_addr[4:2]][ proc_addr[1:0]*32+31 -: 32] = proc_wdata; //data
-					nxt_cache[proc_addr[4:2]][152:128] = proc_addr[29:5]; //tags
-					nxt_cache[proc_addr[4:2]][153] = 1; //dirty
-					nxt_cache[proc_addr[4:2]][154] = 1; //valid
 				end
+				else if (!miss & proc_write) begin
+					if (!miss0)begin
+						nxt_cache0[proc_addr[3:2]][ proc_addr[1:0]*32+31 -: 32] = proc_wdata; //data
+						nxt_cache0[proc_addr[3:2]][153:128] = proc_addr[29:4]; //tags
+						nxt_cache0[proc_addr[3:2]][154] = 1; //dirty
+						nxt_cache0[proc_addr[3:2]][155] = 1; //valid
+					end
+					else if (!miss1) begin
+						nxt_cache1[proc_addr[3:2]][ proc_addr[1:0]*32+31 -: 32] = proc_wdata; //data
+						nxt_cache1[proc_addr[3:2]][153:128] = proc_addr[29:4]; //tags
+						nxt_cache1[proc_addr[3:2]][154] = 1; //dirty
+						nxt_cache1[proc_addr[3:2]][155] = 1; //valid
+					end
+				end         
 			end
 
 			STATE_allocate:begin
 				proc_stall = 1;
 				mem_addr  = proc_addr[29:2];
 				if (mem_ready & !finish)begin
-					nxt_cache[proc_addr[4:2]][127:0] = mem_rdata; //data
-					nxt_cache[proc_addr[4:2]][152:128] = proc_addr[29:5]; //tags
-					nxt_cache[proc_addr[4:2]][153] = 0; //dirty
-					nxt_cache[proc_addr[4:2]][154] = 1; //valid
-					mem_read = 0;
-					mem_write = 0;
-					nxt_finish = 1;
+					if (!cache0[proc_addr[3:2]][156])begin
+						nxt_cache0[proc_addr[3:2]][127:0] = mem_rdata; //data
+						nxt_cache0[proc_addr[3:2]][153:128] = proc_addr[29:4]; //tags
+						nxt_cache0[proc_addr[3:2]][154] = 0; //dirty
+						nxt_cache0[proc_addr[3:2]][155] = 1; //valid
+						nxt_cache0[proc_addr[3:2]][156] = 1;  //lru0;
+						nxt_cache1[proc_addr[3:2]][156] = 0;  //lru1;
+						mem_read = 0;
+						mem_write = 0;
+						nxt_finish = 1;
+					end
+					else begin
+						nxt_cache1[proc_addr[3:2]][127:0] = mem_rdata; //data
+						nxt_cache1[proc_addr[3:2]][153:128] = proc_addr[29:4]; //tags
+						nxt_cache1[proc_addr[3:2]][154] = 0; //dirty
+						nxt_cache1[proc_addr[3:2]][155] = 1; //valid
+						nxt_cache0[proc_addr[3:2]][156] = 0;  //lru0;
+						nxt_cache1[proc_addr[3:2]][156] = 1;  //lru1;
+						mem_read = 0;
+						mem_write = 0;
+						nxt_finish = 1;
+					end
 				end
 				else begin
 					mem_read = 1;
 					mem_write = 0;
 					nxt_finish = 0;
-				end              
+				end
 			end
 
 			STATE_write_back:begin
 				proc_stall = 1;
-				mem_wdata = cache[proc_addr[4:2]][127:0];
-				mem_addr  = { cache[proc_addr[4:2]][152:128] , proc_addr[4:2] };
-				if (mem_ready & !finish)begin
-					nxt_cache[proc_addr[4:2]][154] = 1; //valid
-					nxt_cache[proc_addr[4:2]][153] = 0; //dirty
-					mem_read = 0;
-					mem_write = 0;
-					nxt_finish = 1;
+
+				if (!cache0[proc_addr[3:2]][156])begin
+					mem_wdata = cache0[proc_addr[3:2]][127:0];
+					mem_addr  = { cache0[proc_addr[3:2]][153:128] , proc_addr[3:2] }; 
+					if (mem_ready & !finish)begin
+						nxt_cache0[proc_addr[3:2]][155] = 1; //valid
+						nxt_cache0[proc_addr[3:2]][154] = 0; //dirty
+						nxt_cache0[proc_addr[3:2]][156] = 0;  //lru0; write-back後要read, 順序不變
+						nxt_cache1[proc_addr[3:2]][156] = 1;  //lru1;
+						mem_read = 0;
+						mem_write = 0;
+						nxt_finish = 1;
+					end
+					else begin
+						nxt_cache0[proc_addr[3:2]][155] = 1; //valid
+						nxt_cache0[proc_addr[3:2]][154] = 1; //dirty
+						mem_read = 0;
+						mem_write = 1 ;
+						nxt_finish = 0;
+					end
 				end
-				else  begin
-					mem_read = 0;
-					mem_write = 1;
-					nxt_finish = 0;
+				else begin
+					mem_wdata = cache1[proc_addr[3:2]][127:0];
+					mem_addr  = { cache1[proc_addr[3:2]][153:128] , proc_addr[3:2] }; 
+					if (mem_ready & !finish)begin
+						nxt_cache1[proc_addr[3:2]][155] = 1; //valid
+						nxt_cache1[proc_addr[3:2]][154] = 0; //dirty
+						nxt_cache0[proc_addr[3:2]][156] = 1;  //lru0;
+						nxt_cache1[proc_addr[3:2]][156] = 0;  //lru1;
+						mem_read = 0;
+						mem_write = 0;
+						nxt_finish = 1;
+					end
+					else begin
+						nxt_cache1[proc_addr[3:2]][155] = 1; //valid
+						nxt_cache1[proc_addr[3:2]][154] = 1; //dirty
+						mem_read = 0;
+						mem_write = 1 ;
+						nxt_finish = 0;
+					end
 				end
 			end
-			
+
 			STATE_idle:begin
 				proc_stall = 1;
 			end
@@ -300,14 +385,16 @@
 	always@( posedge clk ) begin
 		if( proc_reset ) begin
 			for (i = 0 ; i < 8 ; i=i+1)begin
-				cache[i] <= 0;
+				cache0[i] <=  0;
+				cache1[i] <=  0;
 			end
 			state <= STATE_idle;
 			finish <= nxt_finish;
 		end
 		else begin
 			for (i = 0; i<8; i=i+1)begin
-				cache[i] <= nxt_cache[i];
+				cache0[i] <= nxt_cache0[i];
+				cache1[i] <= nxt_cache1[i];
 			end
 			state <= nxt_state;
 			finish <= nxt_finish;
@@ -317,17 +404,6 @@
 	endmodule
 
 //================= cache ============================
-
-//Disscussion
-//1. mem stage 用太多東西，critical path會變大，移到wb stage？(write reg會變comb)
-//2. cache 優化，icache, dcache分開寫
-//3. jalr predction?
-//4. mem read 提前準備好
-//5. write buffer
-//6. read memory first
-//7. ICACHE 可把write部分刪掉
-//8. DCACHE 全部清0
-//9. 用gate or 相等表示
 
 module RISCV_Pipeline(
 	clk, rst_n, ICACHE_ren, ICACHE_wen, ICACHE_addr, ICACHE_wdata, ICACHE_stall, ICACHE_rdata,
@@ -532,14 +608,14 @@ module RISCV_Pipeline(
 
 	//========== type =============
     always @(*)begin
-        case (op)
-            7'b0110011: type = 0; //R-type
-			7'b0010011: type = 1; //I-type
-            7'b0000011: type = 1; //I-type, lw
-            7'b1100111: type = 1; //I-type, jalr
-            7'b0100011: type = 2; //S, sw
-            7'b1100011: type = 3; //B, beq
-            7'b1101111: type = 4; //jal
+        case (op[6:2])
+            5'b01100: type = 0; //R-type
+			5'b00100: type = 1; //I-type
+            5'b00000: type = 1; //I-type, lw
+            5'b11001: type = 1; //I-type, jalr
+            5'b01000: type = 2; //S, sw
+            5'b11000: type = 3; //B, beq
+            5'b11011: type = 4; //jal
             default: type=5;
         endcase
     end
@@ -690,11 +766,6 @@ module RISCV_Pipeline(
 		//rd_w為運算後的值
 		rd_w_EX = (ctrl_jal_EX | ctrl_jalr_EX)&!ctrl_decomp_EX? PC_EX+4 : 
 					(ctrl_jal_EX | ctrl_jalr_EX)&ctrl_decomp_EX? PC_EX+2 : alu_out_EX;
-
-
-		//mem_to_register (write rd)
-		write_rd_MEM =  ctrl_memtoreg_MEM? read_data_MEM : rd_w_MEM_real;
-
 		
 		//jalr = rs1 + imme (rs1 forwarded)
 		case(ctrl_FA_j) //實際上只有00,10會成立
@@ -724,9 +795,7 @@ module RISCV_Pipeline(
 
 		ctrl_bj_taken = ( ((ctrl_beq_ID & compare_rs1==compare_rs2) | ctrl_bne_ID & (compare_rs1!=compare_rs2)) | ctrl_jal_ID);
 
-		PC_nxt = ctrl_jalr_ID? PC_jalr_ID : ctrl_bj_taken? PC_B_ID : (PC[1]|(ctrl_cp1&ctrl_cp2&!split))? PC+2 : PC+4; //rs1+imme 或 pc+imme 或 pc+4;
-		//PC_nxt = ctrl_jalr_ID? PC_jalr_ID : ctrl_bj_taken? PC_B_ID : (PC[1]|(!PC[1]&ctrl_cp1&ctrl_cp2&!cut))? PC+2 : PC+4; //rs1+imme 或 pc+imme 或 pc+4;
-    
+		PC_nxt = ctrl_jalr_ID? PC_jalr_ID : ctrl_bj_taken? PC_B_ID : (PC[1]|(ctrl_cp1&ctrl_cp2&!split))? PC+2 : PC+4; //rs1+imme 或 pc+imme 或 pc+4;    
 	end
 
 	//========= hazard ===========
@@ -785,7 +854,6 @@ module RISCV_Pipeline(
             for (i = 0 ; i<32; i=i+1)begin
                 register[i] <= 0 ;
             end
-
 			imme_EX <= 0 ;
 
 			ctrl_jalr_EX <= 0;
@@ -838,147 +906,74 @@ module RISCV_Pipeline(
         end
         else if (!ICACHE_stall & !DCACHE_stall ) begin
             if (ctrl_regwrite_MEM & rd_MEM!=0)begin
-                register[rd_MEM] <= write_rd_MEM; //可用comb??????????????????????????????????????????
+                register[rd_MEM] <= rd_w_MEM_real; //可用comb??????????????????????????????????????????
             end
             else begin
-                register[0] <=0;
+                register[rd_MEM] <= register[rd_MEM];
             end
 
-			if (!ctrl_lw_stall)begin
-				imme_EX <= imme_ID;
+			imme_EX <= (!ctrl_lw_stall)? imme_ID : 0;
 
-				ctrl_jalr_EX <= ctrl_jalr_ID; 
+			//ctrl
+			ctrl_jalr_EX <= (!ctrl_lw_stall)? ctrl_jalr_ID : 0; 
+			ctrl_jal_EX  <= (!ctrl_lw_stall)? ctrl_jal_ID : 0; 
 
-				ctrl_jal_EX  <= ctrl_jal_ID; 
+			ctrl_memread_EX <= (!ctrl_lw_stall)? ctrl_memread_ID : 0;
+			ctrl_memread_MEM <= ctrl_memread_EX;
 
-				ctrl_memread_EX <= ctrl_memread_ID;
-				ctrl_memread_MEM <= ctrl_memread_EX;
+			ctrl_memtoreg_EX <= (!ctrl_lw_stall)? ctrl_memtoreg_ID : 0;
+			ctrl_memtoreg_MEM <= ctrl_memtoreg_EX;
+			ctrl_memtoreg_WB <= ctrl_memtoreg_MEM;
 
-				ctrl_memtoreg_EX <= ctrl_memtoreg_ID;
-				ctrl_memtoreg_MEM <= ctrl_memtoreg_EX;
-				ctrl_memtoreg_WB <= ctrl_memtoreg_MEM;
+			ctrl_memwrite_EX <= (!ctrl_lw_stall)? ctrl_memwrite_ID : 0;
+			ctrl_memwrite_MEM <= ctrl_memwrite_EX;
 
-				ctrl_memwrite_EX <= ctrl_memwrite_ID;
-				ctrl_memwrite_MEM <= ctrl_memwrite_EX;
+			ctrl_regwrite_EX <= (!ctrl_lw_stall)? ctrl_regwrite_ID : 0;
+			ctrl_regwrite_MEM <= ctrl_regwrite_EX;
+			ctrl_regwrite_WB <= ctrl_regwrite_MEM;
 
-				ctrl_regwrite_EX <= ctrl_regwrite_ID;
-				ctrl_regwrite_MEM <= ctrl_regwrite_EX;
-				ctrl_regwrite_WB <= ctrl_regwrite_MEM;
-
-				ctrl_ALUSrc_EX <= ctrl_ALUSrc_ID;
-			end
-			else begin //進到EX的東西全部清0
-				imme_EX <= 0;
-
-				ctrl_jalr_EX <= 0; 
-
-				ctrl_jal_EX  <= 0; 
-
-				ctrl_memread_EX <= 0;
-				ctrl_memread_MEM <= ctrl_memread_EX;
-
-				ctrl_memtoreg_EX <= 0;
-				ctrl_memtoreg_MEM <= ctrl_memtoreg_EX;
-				ctrl_memtoreg_WB <= ctrl_memtoreg_MEM;
-
-				ctrl_memwrite_EX <= 0;
-				ctrl_memwrite_MEM <= ctrl_memwrite_EX;
-
-				ctrl_regwrite_EX <= 0;
-				ctrl_regwrite_MEM <= ctrl_regwrite_EX;
-				ctrl_regwrite_WB <= ctrl_regwrite_MEM;
-
-				ctrl_ALUSrc_EX <= 0;
-			end
+			ctrl_ALUSrc_EX <= (!ctrl_lw_stall)? ctrl_ALUSrc_ID : 0;
 
 			//memory
 			wdata_MEM <= wdata_EX;
 
 			//inst
-			if (!ctrl_lw_stall)begin
-				inst_ID <= inst_ID_nxt;
-				type_EX <= type;
-			end
-			else begin
-				inst_ID <= inst_ID;
-				type_EX <= type_EX;
-			end
+			inst_ID <= (!ctrl_lw_stall)? inst_ID_nxt : inst_ID;
+			type_EX <= (!ctrl_lw_stall)? type : type_EX;
 
 			//alu
 			alu_out_MEM <= alu_out_EX;
 			alu_out_WB <= alu_out_MEM;
-
-			if (!ctrl_lw_stall)begin
-				alu_ctrl_EX <= alu_ctrl_ID;
-			end
-			else begin
-				alu_ctrl_EX <= 0;
-			end
+			alu_ctrl_EX = (!ctrl_lw_stall)? alu_ctrl_ID : 0;
 
 			//register
-			if (!ctrl_lw_stall)begin
-				rs1_EX <= rs1_ID;			
-				rs2_EX <= rs2_ID;			
-				rd_EX <= rd_ID;
-				rd_MEM <= rd_EX;
-				rd_WB <= rd_MEM;
-			
-				rs1_data_EX <= rs1_data_ID; 
-				rs2_data_EX <= rs2_data_ID; 
+			rs1_EX <= (!ctrl_lw_stall)? rs1_ID : 0;			
+			rs2_EX <= (!ctrl_lw_stall)? rs2_ID : 0;			
+			rd_EX  <= (!ctrl_lw_stall)? rd_ID : 0;
+			rs1_data_EX <= (!ctrl_lw_stall)? rs1_data_ID : 0; 
+			rs2_data_EX <= (!ctrl_lw_stall)? rs2_data_ID : 0; 
 
-				rd_w_MEM <= rd_w_EX;
-				rd_w_WB <= ctrl_memread_MEM? read_data_MEM:rd_w_MEM;  //可用comb??????????????????????????????????????????
-
-			end
-			else begin
-				rs1_EX <= 0;			
-				rs2_EX <= 0;			
-				rd_EX <= 0;
-				rd_MEM <= rd_EX;
-				rd_WB <= rd_MEM;
-			
-				rs1_data_EX <= 0; 
-				rs2_data_EX <= 0; 
-
-
-				rd_w_MEM <= rd_w_EX;
-				rd_w_WB <= ctrl_memread_MEM? read_data_MEM:rd_w_MEM;
-				//rd_w_WB <= rd_w_MEM_real;
-			end
+			rd_MEM <= rd_EX;
+			rd_WB <= rd_MEM;
+			rd_w_MEM <= rd_w_EX;
+			rd_w_WB <= rd_w_MEM_real; 
 
 			//PC
-			if (!ctrl_lw_stall)begin
-				PC_ID <= PC;
-				PC_EX <= PC_ID;
-				PC <= PC_nxt;
+			PC_ID <= (!ctrl_lw_stall)? PC : PC_ID;
+			PC_EX <= (!ctrl_lw_stall)? PC_ID : 0;
+			PC <= (!ctrl_lw_stall)? PC_nxt : PC;
 
-				cut <= (ctrl_jalr_ID|ctrl_bj_taken)? 1'b0 : cut_nxt;
-				split <= split_nxt;
-				inst_IF_buff <= inst_IF[31:16];
-				ctrl_decomp_ID <= ctrl_decomp_IF;
-				ctrl_decomp_EX <= ctrl_decomp_ID;
-			end
-			else begin
-				PC_ID <= PC_ID;
-				PC_EX <= 0;
-				PC <= PC;
-
-				cut <= cut;
-				split <= split;
-				inst_IF_buff <= inst_IF_buff;
-				ctrl_decomp_ID <= ctrl_decomp_ID;
-				ctrl_decomp_EX <= ctrl_decomp_EX;
-			end
+			cut <= (ctrl_lw_stall)? cut : (ctrl_jalr_ID|ctrl_bj_taken)? 1'b0 : cut_nxt;
+			split <= (!ctrl_lw_stall)? split_nxt : split;
+			inst_IF_buff <= (!ctrl_lw_stall)? inst_IF[31:16] : inst_IF_buff;
+			ctrl_decomp_ID <= (!ctrl_lw_stall)? ctrl_decomp_IF : ctrl_decomp_ID;
+			ctrl_decomp_EX <= (!ctrl_lw_stall)? ctrl_decomp_ID : ctrl_decomp_EX;
         end
 		//============ stall ================
 		else begin 
-            if (ctrl_regwrite_MEM & rd_MEM!=0)begin
-                register[rd_MEM] <= register[rd_MEM];
-            end
-            else begin
-                register[0] <=0;
-            end
+			register[rd_MEM] <= register[rd_MEM];
 
+			//ctrl
 			ctrl_jalr_EX <= ctrl_jalr_EX;
 			ctrl_jal_EX  <= ctrl_jal_EX; 
 
@@ -997,7 +992,6 @@ module RISCV_Pipeline(
 			ctrl_regwrite_WB <= ctrl_regwrite_WB;
 
 			ctrl_ALUSrc_EX <= ctrl_ALUSrc_EX;
-
 
 			//inst
 			inst_ID <= inst_ID;
@@ -1020,140 +1014,14 @@ module RISCV_Pipeline(
 			rs1_data_EX <= rs1_data_EX; 
 			rs2_data_EX <= rs2_data_EX; 
 
-
 			rd_w_MEM <= rd_w_MEM;
 			rd_w_WB <= rd_w_WB;
 
 			//PC
 			PC_ID <= PC_ID;
 			PC_EX <= PC_EX;
-            PC <= PC;
-			
+			PC <= PC;
 		end
     end
 
 endmodule
-
-
-
-// ADD		0000000 rs2 rs1 000 rd 0110011	R-type	+
-// SUB		0100000 rs2 rs1 000 rd 0110011	R-type	-
-// AND		0000000 rs2 rs1 111 rd 0110011	R-type	&
-// OR		0000000 rs2 rs1 110 rd 0110011	R-type	|
-// XOR		0000000 rs2 rs1 100 rd 0110011	R-type	^
-// SLT		0000000 rs2 rs1 010 rd 0110011	R-type	<
-
-// ADDI	imme[11:0] rs1 000 rd 0010011	I-type	+
-// ANDI	imme[11:0] rs1 111 rd 0010011	I-type	&
-// ORI		imme[11:0] rs1 110 rd 0010011	I-type	|
-// XORI	imme[11:0] rs1 100 rd 0010011	I-type	^
-// SLLI	0000000 sh rs1 001 rd 0010011	I-type	<<
-// SRAI	0100000 sh rs1 101 rd 0010011	I-type	>>>
-// SRLI	0000000 sh rs1 101 rd 0010011	I-type	>>
-// SLTI	imme[11:0] rs1 010 rd 0010011	I-type	<
-// LW		imme[11:0] rs1 010 rd 0000011	I-type	+
-// JALR	imme[11:0] rs1 000 rd 1100111	I-type	+
-// NOP(addi)imm[11:0] rs1 000 rd 0010011	I-type	+
-
-// BEQ		imme[12|10:5] rs2 rs1 000 imm[4:1|11] 1100011	B-type	- 
-// BNE		imme[12|10:5] rs2 rs1 001 imm[4:1|11] 1100011	B-type	- 
-
-// JAL		imme[20|10:1|11|19:12] rd 1101111				J-type	+
-
-// SW		imme[11:5] rs2 rs1 010 imm[4:0] 0100011			S-type +
-
-
-// ADD		0000000 rs2 rs1 000 rd 0110011	R-type
-// ADDI	imm[11:0] rs1 000 rd 0010011	I-type
-// SUB		0100000 rs2 rs1 000 rd 0110011	R-type
-// AND		0000000 rs2 rs1 111 rd 0110011	R-type
-// ANDI	imme[11:0] rs1 111 rd 0010011	I-type
-// OR		0000000 rs2 rs1 110 rd 0110011	R-type
-// ORI		imme[11:0] rs1 110 rd 0010011	I-type
-// XOR		0000000 rs2 rs1 100 rd 0110011	R-type
-// XORI	imme[11:0] rs1 100 rd 0010011	I-type
-// SLLI	0000000 sh rs1 001 rd 0010011	I-type
-// SRAI	0100000 sh rs1 101 rd 0010011	I-type
-// SRLI	0000000 sh rs1 101 rd 0010011	I-type
-// SLT		0000000 rs2 rs1 010 rd 0110011	R-type
-// SLTI	imme[11:0] rs1 010 rd 0010011	I-type
-// BEQ		imme[12|10:5] rs2 rs1 000 imm[4:1|11] 1100011	B-type
-// BNE		imme[12|10:5] rs2 rs1 001 imm[4:1|11] 1100011	B-type
-// JAL		imme[20|10:1|11|19:12] rd 1101111				J-type
-// JALR	imme[11:0] rs1 000 rd 110011
-// LW		imm[11:0] rs1 010 rd 0000011	I-type
-// SW		imme[11:5] rs2 rs1 010 imm[4:0] 0100011			S-type
-// NOP(addi)imm[11:0] rs1 000 rd 0010011	I-type
-
-
-// C.LW 	010 off[5:3] rs1' off[2|6] rd'  00		== lw rd' rs1' off[6:2]
-// C.SW	110 off[5:3] rs1' off[2|6] rs2' 00		== sw rs2' rs1' off[6:2]
-
-// C.BEQZ	110 off[8|4:3] rs1' off[7:6|2:1|5] 01	== beq rs1' x0 off[8:1]	
-// C.BNEZ	111 off[8|4:3] rs1' off[7:6|2:1|5] 01	== bne rs1' x0 off[8:1]
-// C.J		101 off[11|4|9:8|10|6|7|3:1|5] 01		== jal x0 off[11:1]
-// C.JAL	001 off[11|4|9:8|10|6|7|3:1|5] 01		== jal x1 off[11:1]
-// C.ADDI  000 off[5] rs1/rd!=0  off[4:0] 01		== addi rd rd imme
-// C.ANDI	100 off[5] 10 rs1'/rd'  off[4:0] 01		== andi rd rd imme
-// C.SRLI  100 off[5] 00 rs1'/rd'  off[4:0] 01		== srli rd' rd' imme //off[5]==0
-// C.SRAI  100 off[5] 01 rs1'/rd'  off[4:0] 01		== srai rd' rd' imme
-// C.NOP   000 0 00000 00000 01					== nop
-
-// C.JR	100 0 rs1!=0 00000 10					== jalr x0 rs1, 0
-// C.JALR	100 1 rs1!=0 00000 10					== jalr x1 rs1, 0
-// C.SLLI  000 off[5] rs1/rd!=0  off[4:0] 10		== slli rd rd imme
-// C.MV 	100 0 rd!=0 rs2!=0 10					== add rd rs1 x0
-// C.ADD	100 1 rs1/rd!=0 rs2!=0 10				== add rd rs1 rs2
-
-
-// if (!func3c[2] & opc==2'b00)begin //lw rd' rs1' off[6:2] //imme[11:0] rs1 010 rd 0000011
-// 	inst_de = {5'd0,inst_c[5],inst_c[12:10],inst_c[6],2'b00, rs1_3c, 3'b010, rd_3c, 7'b0000011};
-// end
-// else if (func3c[2] & opc==2'b00)begin //sw rs2' rs1' off[6:2] //imme[11:5] rs2 rs1 010 imm[4:0] 0100011
-// 	inst_de = {5'd0, inst_c[5],inst_c[12], rs2_3c, rs1_3c, 3'b010, inst_c[11:10],inst_c[6], 2'b00, 7'b0100011};
-// end
-// else if (func3c==3'b110 & opc==2'b01)begin //beq rs1' x0 off[8:1] //imme[12|10:5] rs2 rs1 000 imm[4:1|11] 1100011
-// 	inst_de = { {4{inst_c[12]}}, inst_c[6:5], inst_c[2], 5'd0, rs1_3c, 3'b000, inst_c[11:10],inst_c[4:3], inst_c[12], 7'b1100011 };
-// end
-// else if (func3c==3'b111 & opc==2'b01)begin //bne rs1' x0 off[8:1] //imme[12|10:5] rs2 rs1 001 imm[4:1|11] 1100011
-// 	inst_de = { {4{inst_c[12]}}, inst_c[6:5], inst_c[2], 5'd0, rs1_3c, 3'b001, inst_c[11:10],inst_c[4:3], inst_c[12], 7'b1100011 };
-// end
-// else if (func3c==3'b101 & opc==2'b01)begin //jal x0 off[11:1] //imme[20|10:1|11|19:12] rd 1101111
-// 	inst_de = {inst_c[12],inst_c[8],inst_c[10:9],inst_c[6],inst_c[7],inst_c[2],inst_c[11],inst_c[5:3],inst_c[12], {8{inst_c[12]}}, 5'd0, 7'b1101111};
-// end
-// else if (func3c==3'b001 & opc==2'b01)begin //jal x1,off[11:1] //imme[20|10:1|11|19:12] rd 1101111
-// 	inst_de = {inst_c[12],inst_c[8],inst_c[10:9],inst_c[6],inst_c[7],inst_c[2],inst_c[11],inst_c[5:3],inst_c[12], {8{inst_c[12]}}, 5'd1, 7'b1101111};
-// end
-// else if (func3c==3'b000 & opc==2'b01)begin //addi rd rd imme //imme[11:0] rs1 000 rd 0010011
-// 	inst_de = {{7{inst_c[12]}},inst_c[6:2], rd_3c, 3'b000, rd_3c, 7'b0010011};
-// end
-// else if (func3c==3'b100 & func2c==2'b10 & opc==2'b01)begin //andi rd rd imme //imme[11:0] rs1 111 rd 0010011
-// 	inst_de = {{7{inst_c[12]}},inst_c[6:2], rd_3c, 3'b111, rd_3c, 7'b0010011};
-// end
-// else if (func3c==3'b100 & func2c==2'b00 & opc==2'b01)begin //srli rd' rd' imme //0000000 sh rs1 101 rd 0010011
-// 	inst_de = {7'b0000000, inst_c[6:2], rd_3c, 3'b101, rd_3c, 7'b0010011};
-// end
-// else if (func3c==3'b100 & func2c==2'b01 & opc==2'b01)begin //srai rd' rd' imme //0100000 sh rs1 101 rd 0010011
-// 	inst_de = {7'b0100000, inst_c[6:2], rd_3c, 3'b101, rd_3c, 7'b0010011};
-// end
-// else if ({inst_c[15:0]}==16'b0000000000000001)begin//nop
-// 	inst_de = {12'd0, 5'd0, 3'd0, 5'd0, 7'b0010011};
-// end
-// else if (func3c==3'b100 & !inst_c[12] & opc==2'b10)begin //jalr x0 rs1, 0 //imme[11:0] rs1 000 rd 1100111
-// 	inst_de = {12'd0, rd_5c, 3'b000, 5'd0, 7'b110011};
-// end
-// else if (func3c==3'b100 & inst_c[12] & opc==2'b10)begin //jalr x1 rs1, 0 //imme[11:0] rs1 000 rd 1100111
-// 	inst_de = {12'd0, rd_5c, 3'b000, 5'd1, 7'b110011};
-// end
-// else if (func3c==3'b000 & opc==2'b10)begin //slli rd rd imme //0000000 sh rs1 001 rd 0010011
-// 	inst_de = {7'd0, inst_c[6:2], rd_5c, 3'b001, rd_5c, 7'b0010011};
-// end
-// else if (func3c==3'b100 & !inst_c[12] & opc==2'b10)begin //mv = add rd x0 rs2 //0000000 rs2 rs1 000 rd 0110011
-// 	inst_de = { 7'd0, rs2_5c, 5'd0, 3'b000, rd_5c, 7'b0110011};
-// end
-// else if (func3c==3'b100 & inst_c[12] & opc==2'b10)begin //add rd rs1 rs2 //0000000 rs2 rs1 000 rd 0110011
-// 	inst_de = { 7'd0, rs2_5c, rd_5c, 3'b000, rd_5c, 7'b0110011};
-// end
-// else begin
-// 	inst_de = 0 ;
-// end
