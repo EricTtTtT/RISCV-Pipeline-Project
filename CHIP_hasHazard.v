@@ -69,14 +69,14 @@
 			// control interface
 			.clk            (clk)           , 
 			.rst_n          (rst_n)         ,
-	//----------I cache interface-------		
+			//----------I cache interface-------		
 			.ICACHE_ren     (ICACHE_ren)    ,
 			.ICACHE_wen     (ICACHE_wen)    ,
 			.ICACHE_addr    (ICACHE_addr)   ,
 			.ICACHE_wdata   (ICACHE_wdata)  ,
 			.ICACHE_stall   (ICACHE_stall)  ,
 			.ICACHE_rdata   (ICACHE_rdata)  ,
-	//----------D cache interface-------
+			//----------D cache interface-------
 			.DCACHE_ren     (DCACHE_ren)    ,
 			.DCACHE_wen     (DCACHE_wen)    ,
 			.DCACHE_addr    (DCACHE_addr)   ,
