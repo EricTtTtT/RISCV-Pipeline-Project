@@ -1046,7 +1046,7 @@
 				alu_out_MEM <= alu_out_EX;
 				alu_out_WB <= alu_out_MEM;
 
-				alu_ctrl_EX = (!ctrl_lw_stall)? alu_ctrl_ID : 0;
+				alu_ctrl_EX <= (!ctrl_lw_stall)? alu_ctrl_ID : 0;
 
 				//register
 				rs1_EX <= (!ctrl_lw_stall)? rs1_ID : 0;			
