@@ -593,18 +593,6 @@
 
 //================= Dcache ============================
 
-
-//Disscussion
-//1. mem stage 用太多東西，critical path會變大，移到wb stage？(write reg會變comb)
-//2. cache 優化，icache, dcache分開寫
-//3. branch prediction, jalr predction?
-//4. mem read 提前準備好
-//5. cache write buffer
-//6. ICACHE 可把write部分刪掉
-//7. 用gate or 相等表示  test == 2'b01 , !test[1] & test[0]
-//8. cache 有乘法部分
-
-
 //=========== CHIP =================
 	module RISCV_Pipeline(
 		clk, rst_n, ICACHE_ren, ICACHE_wen, ICACHE_addr, ICACHE_wdata, ICACHE_stall, ICACHE_rdata,
@@ -1061,7 +1049,6 @@
 				alu_ctrl_EX = (!ctrl_lw_stall)? alu_ctrl_ID : 0;
 
 				//register
-				
 				rs1_EX <= (!ctrl_lw_stall)? rs1_ID : 0;			
 				rs2_EX <= (!ctrl_lw_stall)? rs2_ID : 0;			
 				rd_EX  <= (!ctrl_lw_stall)? rd_ID : 0;
