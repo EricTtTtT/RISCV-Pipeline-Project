@@ -746,26 +746,26 @@
 				imme_ID = { {21{inst_ID[31]}}, inst_ID[30:20]};
 			end
 
-			3'd2: begin
+			3'd2: begin //sw
 				ctrl_memwrite_ID = 1;
 				ctrl_ALUSrc_ID = 1;			
-				imme_ID = { {21{inst_ID[31]}}, inst_ID[30:25], inst_ID[11:7]}; //sw
+				imme_ID = { {21{inst_ID[31]}}, inst_ID[30:25], inst_ID[11:7]}; 
 			end
 
-			3'd3: begin
+			3'd3: begin //beq, bne
 				ctrl_beq_ID = !func3[0];
 				ctrl_bne_ID = func3[0];
 				ctrl_ALUSrc_ID = 1;			
-				imme_ID = { {20{inst_ID[31]}}, inst_ID[7], inst_ID[30:25], inst_ID[11:8], 1'b0 }; //beq, bne
+				imme_ID = { {20{inst_ID[31]}}, inst_ID[7], inst_ID[30:25], inst_ID[11:8], 1'b0 }; 
 			end
 
-			3'd4:begin
+			3'd4: begin
 				ctrl_jal_ID = 1;
 				ctrl_regwrite_ID = 1;
 				ctrl_ALUSrc_ID = 1;
 				imme_ID = { {12{inst_ID[31]}}, inst_ID[19:12], inst_ID[20], inst_ID[30:25], inst_ID[24:21], 1'b0 }; //jal
 			end
-			default:begin
+			default: begin
 				imme_ID = 0;
 				ctrl_jal_ID = 0;
 				ctrl_jalr_ID = 0;
@@ -948,7 +948,7 @@
 			//load use hazard
 			ctrl_lw_stall = (ctrl_memread_EX & (rd_EX==rs1_ID | rd_EX==rs2_ID));
 		end
-
+		//========= hazard ===========
 
 		integer i;
 		always @(posedge clk )begin
