@@ -69,14 +69,14 @@
 			// control interface
 			.clk            (clk)           , 
 			.rst_n          (rst_n)         ,
-	//----------I cache interface-------		
+			//----------I cache interface-------		
 			.ICACHE_ren     (ICACHE_ren)    ,
 			.ICACHE_wen     (ICACHE_wen)    ,
 			.ICACHE_addr    (ICACHE_addr)   ,
 			.ICACHE_wdata   (ICACHE_wdata)  ,
 			.ICACHE_stall   (ICACHE_stall)  ,
 			.ICACHE_rdata   (ICACHE_rdata)  ,
-	//----------D cache interface-------
+			//----------D cache interface-------
 			.DCACHE_ren     (DCACHE_ren)    ,
 			.DCACHE_wen     (DCACHE_wen)    ,
 			.DCACHE_addr    (DCACHE_addr)   ,
@@ -795,6 +795,7 @@ module RISCV_Pipeline(
 			ctrl_memtoreg_ID = 0;
 			ctrl_regwrite_ID = 0;
 			ctrl_ALUSrc_ID = 0; 
+<<<<<<< HEAD
 		end
 		endcase
 	end
@@ -834,6 +835,58 @@ module RISCV_Pipeline(
 			else if (func3[2]&func3[1]&!func3[0]) alu_ctrl_ID = 4'd3; //ori
 			else if (func3[2]&func3[1]&func3[0]) alu_ctrl_ID = 4'd2; //andi
 			else alu_ctrl_ID = 4'd0; //addi
+=======
+			case (type)
+			3'd0: begin //R-type
+				ctrl_regwrite_ID = 1;
+				ctrl_ALUSrc_ID = 0;
+			end
+
+			3'd1: begin //I-type
+				ctrl_memread_ID = !op[4] & !op[2];	//lw,才要讀mem
+				ctrl_memtoreg_ID = !op[4] & !op[2];	//lw,才要讀mem
+				ctrl_regwrite_ID = 1;
+				ctrl_ALUSrc_ID = 1;	//給imme
+				ctrl_jalr_ID = op[2];	//jalr
+				//imme_ID = (func3==3'b001 | func3==3'b101)? 
+				//			{ {27{1'b0}} , inst_ID[24:20]}: //shamt, slli, srai, srli
+				//			{ {21{inst_ID[31]}}, inst_ID[30:20]}; //addi, andi, ori, xori, slli, srai, srli, slti, lw
+				imme_ID = { {21{inst_ID[31]}}, inst_ID[30:20]};
+			end
+
+			3'd2: begin //sw
+				ctrl_memwrite_ID = 1;
+				ctrl_ALUSrc_ID = 1;			
+				imme_ID = { {21{inst_ID[31]}}, inst_ID[30:25], inst_ID[11:7]}; 
+			end
+
+			3'd3: begin //beq, bne
+				ctrl_beq_ID = !func3[0];
+				ctrl_bne_ID = func3[0];
+				ctrl_ALUSrc_ID = 1;			
+				imme_ID = { {20{inst_ID[31]}}, inst_ID[7], inst_ID[30:25], inst_ID[11:8], 1'b0 }; 
+			end
+
+			3'd4: begin
+				ctrl_jal_ID = 1;
+				ctrl_regwrite_ID = 1;
+				ctrl_ALUSrc_ID = 1;
+				imme_ID = { {12{inst_ID[31]}}, inst_ID[19:12], inst_ID[20], inst_ID[30:25], inst_ID[24:21], 1'b0 }; //jal
+			end
+			default: begin
+				imme_ID = 0;
+				ctrl_jal_ID = 0;
+				ctrl_jalr_ID = 0;
+				ctrl_beq_ID = 0;
+				ctrl_bne_ID = 0;
+				ctrl_memread_ID = 0;
+				ctrl_memwrite_ID = 0;
+				ctrl_memtoreg_ID = 0;
+				ctrl_regwrite_ID = 0;
+				ctrl_ALUSrc_ID = 0; 
+			end
+			endcase
+>>>>>>> 34e7781c4a3e37dde42f19ab57fd83f67dc733ae
 		end
 		else if (!op[6]&op[5]&op[4]&!op[3]&!op[2])begin //R-type
 			if (!func3[2]&!func3[1]&!func3[0]) alu_ctrl_ID = func7[5]? 4'd1:4'd0; //sub, add
@@ -959,7 +1012,7 @@ module RISCV_Pipeline(
 		else begin
 			ctrl_FA_j = 2'b00;
 		end
-
+		//========= hazard ===========
 
 		equal_6 = (rd_EX[4]~^rs2_ID[4]) & (((rd_EX[3]~^rs2_ID[3])&(rd_EX[2]~^rs2_ID[2])) & ((rd_EX[1]~^rs2_ID[1])&(rd_EX[0]~^rs2_ID[0])));
 		equal_7 = (rd_MEM[4]~^rs2_ID[4]) & (((rd_MEM[3]~^rs2_ID[3])&(rd_MEM[2]~^rs2_ID[2])) & ((rd_MEM[1]~^rs2_ID[1])&(rd_MEM[0]~^rs2_ID[0])));
