@@ -607,7 +607,7 @@ module RISCV_Pipeline(
 	output reg [31:0] ICACHE_wdata, DCACHE_wdata;
 
 //==== input/output definition ============================
-
+	integer i;
 	//========= PC =========
 	reg [31:0] PC;
 	reg [31:0] PC_nxt;
@@ -616,6 +616,8 @@ module RISCV_Pipeline(
 
 	//========= Registers ========= 
 	reg [31:0] register [0:31];
+	reg [31:0] register_save [0:31];
+	reg [31:0] register_save_nxt [0:31];
 	wire [4:0] rs1_ID;	//rs1
 	reg [4:0] rs1_EX;	
 	wire [31:0] rs1_data_ID;
@@ -635,6 +637,8 @@ module RISCV_Pipeline(
 	reg signed [31:0] rd_w_MEM_real;
 	reg signed [31:0] rd_w_MEM;
 	reg signed [31:0] rd_w_WB;
+
+	reg signed [31:0] write_rd_WB;
 
 	reg [31:0] compare_rs1;
 	reg [31:0] compare_rs2;
@@ -662,6 +666,7 @@ module RISCV_Pipeline(
 
 	//========= memory ========= 
 	reg [31:0] read_data_MEM; //read from mem
+	reg [31:0] read_data_WB; 
 
 	reg [31:0] wdata_EX; //write mem
 	reg [31:0] wdata_MEM;
@@ -679,6 +684,7 @@ module RISCV_Pipeline(
 
 	reg [1:0] ctrl_FA, ctrl_FB;
 	reg [1:0] ctrl_FA_j, ctrl_FB_j;
+	reg [31:0] FA_j_data;
 
 	reg ctrl_lw_stall;
 
@@ -911,11 +917,12 @@ module RISCV_Pipeline(
 		
 		//jalr = rs1 + imme (rs1 forwarded)
 		case(ctrl_FA_j) //實際上只有00,10會成立
-			2'b00: PC_jalr_ID = rs1_data_ID + imme_ID;
-			//2'b01: PC_jalr_ID = rd_w_EX + imme_ID;
-			2'b10: PC_jalr_ID = rd_w_MEM + imme_ID;
-			default: PC_jalr_ID = rs1_data_ID + imme_ID;
+			2'b00: FA_j_data = rs1_data_ID;
+			//2'b01: FA_j_data = rd_w_EX;
+			2'b10: FA_j_data = rd_w_MEM;
+			default: FA_j_data = rs1_data_ID;
 		endcase
+		PC_jalr_ID = FA_j_data+imme_ID;
 
 		case(ctrl_FA_j) //實際上只有01
 			//2'b00: compare_rs1 = rs1_data_ID;
@@ -940,6 +947,20 @@ module RISCV_Pipeline(
 		PC_nxt = ctrl_jalr_ID? PC_jalr_ID : ctrl_bj_taken? PC_B_ID : PC+4; //rs1+imme 或 pc+imme 或 pc+4;
 	end
 
+
+	always @(*)begin
+		write_rd_WB =  ctrl_memtoreg_WB? read_data_WB : rd_w_WB;
+		if (ctrl_regwrite_WB)begin
+			register[rd_WB] = rd_WB==0? 0 : write_rd_WB;
+		end 
+		else begin
+			register[rd_WB] = rd_WB==0? 0 : register_save[rd_WB];
+		end
+		register_save_nxt[0] = 0;
+		for (i = 1; i<32; i=i+1)begin
+			register_save_nxt[i] = register[i];
+		end
+	end
 
 	//========= hazard ===========
 	always @(*)begin
@@ -1008,12 +1029,15 @@ module RISCV_Pipeline(
 		ctrl_lw_stall = (ctrl_memread_EX & ( equal_12 | equal_13));
 	end
 
-	integer i;
 	always @(posedge clk )begin
 		if (!rst_n)begin
-			for (i = 0 ; i<32; i=i+1)begin
-				register[i] <= 0 ;
+			// for (i = 0 ; i<32; i=i+1)begin
+			// 	register[i] <= 0 ;
+			// end
+			for (i = 0; i<32; i=i+1)begin
+				register_save[i] <= 0;
 			end
+			read_data_WB <= 0;
 
 			imme_EX <= 0 ;
 
@@ -1065,12 +1089,16 @@ module RISCV_Pipeline(
 
 		end
 		else if (!ICACHE_stall & !DCACHE_stall ) begin
-			if (ctrl_regwrite_MEM & rd_MEM!=0)begin
-				register[rd_MEM] <= rd_w_MEM_real; //可用comb??????????????????????????????????????????
+			// if (ctrl_regwrite_MEM & rd_MEM!=0)begin
+			// 	register[rd_MEM] <= rd_w_MEM_real; //可用comb?
+			// end
+			// else begin
+			// 	register[rd_MEM] <= register[rd_MEM];
+			// end
+			for (i = 0; i<32; i=i+1)begin
+				register_save[i] <= register_save_nxt[i];
 			end
-			else begin
-				register[rd_MEM] <= register[rd_MEM];
-			end
+			read_data_WB <= read_data_MEM;
 
 			imme_EX <= (!ctrl_lw_stall)? imme_ID : 0;
 			
@@ -1125,7 +1153,11 @@ module RISCV_Pipeline(
 		end
 		//============ stall ================
 		else begin 
-			register[rd_MEM] <= register[rd_MEM];
+			//register[rd_MEM] <= register[rd_MEM];
+			for (i = 0; i<32; i=i+1)begin
+				register_save[i] <= register_save[i];
+			end
+			read_data_WB <= read_data_WB;
 
 			//ctrl
 			ctrl_jalr_EX <= ctrl_jalr_EX;
