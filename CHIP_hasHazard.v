@@ -670,7 +670,7 @@ module RISCV_Pipeline(
 	reg ctrl_jalr_ID,		ctrl_jalr_EX; 	//在EX要計算是否要PC+4
 	reg ctrl_jal_ID,		ctrl_jal_EX; 	//
 	reg ctrl_beq_ID;	//beq 在ID做完就沒事了
-	reg ctrl_bne_ID;	//beq 在ID做完就沒事了
+	reg ctrl_bne_ID;	//bne 在ID做完就沒事了
 	reg ctrl_memread_ID,	ctrl_memread_EX, 	ctrl_memread_MEM;
 	reg ctrl_memtoreg_ID,	ctrl_memtoreg_EX, 	ctrl_memtoreg_MEM, 	ctrl_memtoreg_WB;
 	reg ctrl_memwrite_ID, 	ctrl_memwrite_EX, 	ctrl_memwrite_MEM; 
