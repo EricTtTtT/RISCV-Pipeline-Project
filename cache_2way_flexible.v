@@ -4,6 +4,8 @@ Description:
     Implementation of 2-way cache, with flexible number of blocks.
     Since this is 2-way cache, modify NUM_BLOCKS to half of the total number of blocks.
     Then need to modify BLOCK_ADDR_SIZE, TAG_SIZE as well
+TODO:
+    Can modify the case of two dirty and not hit
 ===============================================*/
 module cache(
     clk, proc_reset,
@@ -26,8 +28,8 @@ module cache(
     output reg [127:0] mem_wdata;
     
     //---- wire/reg definition ----------------------------
-    parameter NUM_BLOCKS = 64;
-	parameter BLOCK_ADDR_SIZE = 6;  // log2 NUM_BLOCKS
+    parameter NUM_BLOCKS = 4;
+	parameter BLOCK_ADDR_SIZE = 2;  // log2 NUM_BLOCKS
 	parameter TAG_SIZE = 28-BLOCK_ADDR_SIZE;  // 30 - 2 - BLOCK_ADDR_SIZE
     parameter BLOCK_hSIZE = 130+TAG_SIZE;  // 1+1+TAG_SIZE+128
 	// cache = [word0, word1, word2, word3] 
@@ -52,7 +54,7 @@ module cache(
     reg [BLOCK_hSIZE-1:0] cache1_next [0:NUM_BLOCKS-1];
     reg [BLOCK_hSIZE-1:0] cache2 [0:NUM_BLOCKS-1];
     reg [BLOCK_hSIZE-1:0] cache2_next [0:NUM_BLOCKS-1];
-    reg [NUM_BLOCKS-1:0] lru, lru_next;  // low --> use 1 first
+    reg [NUM_BLOCKS-1:0] lru, lru_next;  // low --> last used is cache 2, use cache1 first
 
     //==== Combinational Circuit ==========================
     assign block_addr = proc_addr[1+BLOCK_ADDR_SIZE : 2];
@@ -64,8 +66,8 @@ module cache(
     assign hit1 = valid1 & (cache1[block_addr][127+TAG_SIZE : 128] == tag);
     assign hit2 = valid2 & (cache2[block_addr][127+TAG_SIZE : 128] == tag);
     assign hit = hit1 | hit2;
-    
-    assign proc_stall = (state==COMP & (hit | (~proc_read & ~proc_write))) ? 0 : 1;
+
+    assign proc_stall = ((state==COMP & hit) | (!proc_read & !proc_write)) ? 0 : 1;
     assign proc_rdata = (hit1 & proc_read)?
                             proc_addr[1]?
                                 proc_addr[0]?
@@ -93,7 +95,7 @@ module cache(
                 state_next = COMP;
             end
             COMP: begin
-                state_next = (hit | (~proc_read & ~proc_write))? COMP : (dirty1 & dirty2)? WRITE : ALLOC;
+                state_next = (proc_stall==1'b0)? COMP : (dirty1 & dirty2)? WRITE : ALLOC;
             end
             WRITE: begin
                 state_next = mem_ready? ALLOC : WRITE;
@@ -109,11 +111,11 @@ module cache(
     always @(*) begin
         //---- I/O signals --------------------------------
         mem_addr = (state==WRITE)?
-                        dirty1?
-                            {cache1[block_addr][127+TAG_SIZE : 128], block_addr}
-                        :   {cache2[block_addr][127+TAG_SIZE : 128], block_addr}
+                        lru[block_addr]?
+                            {cache2[block_addr][127+TAG_SIZE : 128], block_addr}
+                        :   {cache1[block_addr][127+TAG_SIZE : 128], block_addr}
                     : proc_addr[29:2];
-        mem_wdata = dirty1? cache1[block_addr][127:0] : cache2[block_addr][127:0];
+        mem_wdata = lru[block_addr]? cache2[block_addr][127:0] : cache1[block_addr][127:0];
     
         //---- handle cache_next and lru bits -------------
         for (i=0; i<NUM_BLOCKS; i=i+1) begin
@@ -122,7 +124,7 @@ module cache(
             lru_next[i] = lru[i];
         end
         lru_next[block_addr] = state==COMP?
-                                    hit1? 0 : hit2? 1 : lru[block_addr]
+                                    hit1? 1 : hit2? 0 : lru[block_addr]
                                 : lru[block_addr];
 
         case(state)
@@ -142,10 +144,10 @@ module cache(
             end
             WRITE: begin
                 if (mem_ready) begin
-                    if (dirty1) begin
-                        cache1_next[block_addr][BLOCK_hSIZE-1 : BLOCK_hSIZE-2] = 2'b10;
-                    end else begin
+                    if (lru[block_addr]) begin
                         cache2_next[block_addr][BLOCK_hSIZE-1 : BLOCK_hSIZE-2] = 2'b10;
+                    end else begin
+                        cache1_next[block_addr][BLOCK_hSIZE-1 : BLOCK_hSIZE-2] = 2'b10;
                     end
                 end
             end
