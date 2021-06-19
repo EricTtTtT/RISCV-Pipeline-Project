@@ -387,7 +387,7 @@ module Dcache(
     assign hit2 = valid2 & (cache2[block_addr][127+TAG_SIZE : 128] == tag);
     assign hit = hit1 | hit2;
     
-    assign proc_stall = ((state==COMP & hit) | (!proc_read & !proc_write)) ? 0 : 1;
+    assign proc_stall = ((state==COMP & hit) | !(proc_read | proc_write))? 0 : 1;
     assign proc_rdata = (hit1 & proc_read)?
                             proc_addr[1]?
                                 proc_addr[0]?
@@ -576,7 +576,7 @@ module L2_cache(
     assign hit2 = valid2 & (cache2[block_addr][127+TAG_SIZE : 128] == tag);
     assign hit = hit1 | hit2;
     
-    assign proc_stall = ((state==COMP & hit) | (!proc_read & !proc_write)) ? 0 : 1;
+    assign proc_stall = ((state==COMP & hit) | !(proc_read|proc_write))? 0 : 1;
     assign proc_rdata = (hit1 & proc_read)?
                             proc_addr[1]?
                                 proc_addr[0]?
