@@ -114,10 +114,10 @@ always @(*)begin
             else proc_stall =0;
             
             if (!miss & proc_read)begin // valid & hit(tags)
-                proc_rdata = cache[proc_addr[4:2]][ proc_addr[1:0]*32+31 -: 32]; //hit
+                proc_rdata = cache[proc_addr[4:2]][ (proc_addr[1:0] << 5)+31 -: 32]; //hit
             end
             else if (!miss & proc_write ) begin
-                nxt_cache[proc_addr[4:2]][ proc_addr[1:0]*32+31 -: 32] = proc_wdata; //data
+                nxt_cache[proc_addr[4:2]][ (proc_addr[1:0] << 5)+31 -: 32] = proc_wdata; //data
                 nxt_cache[proc_addr[4:2]][152:128] = proc_addr[29:5]; //tags
                 nxt_cache[proc_addr[4:2]][153] = 1; //dirty
                 nxt_cache[proc_addr[4:2]][154] = 1; //valid

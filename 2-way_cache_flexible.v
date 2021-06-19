@@ -128,11 +128,11 @@ module cache(
         case(state)
             COMP: begin
                 if (hit1 & proc_write) begin
-                    cache1_next[block_addr][(proc_addr[1:0])*32+31 -: 32] = proc_wdata;
+                    cache1_next[block_addr][(proc_addr[1:0] << 5)+31 -: 32] = proc_wdata;
                     cache1_next[block_addr][127+TAG_SIZE : 128] = tag;
                     cache1_next[block_addr][BLOCK_hSIZE-1 : BLOCK_hSIZE-2] = 2'b11;
                 end else if (hit2 & proc_write) begin
-                    cache2_next[block_addr][(proc_addr[1:0])*32+31 -: 32] = proc_wdata;
+                    cache2_next[block_addr][(proc_addr[1:0] << 5)+31 -: 32] = proc_wdata;
                     cache2_next[block_addr][127+TAG_SIZE : 128] = tag;
                     cache2_next[block_addr][BLOCK_hSIZE-1 : BLOCK_hSIZE-2] = 2'b11;
                 end else begin  // TODO: remove else?

@@ -151,21 +151,21 @@ always @(*)begin
         
             if (!miss & proc_read)begin
                 if (!miss0)begin
-                    proc_rdata = cache0[proc_addr[3:2]][ proc_addr[1:0]*32+31 -: 32]; //hit
+                    proc_rdata = cache0[proc_addr[3:2]][ (proc_addr[1:0] << 5)+31 -: 32]; //hit
                 end
                 else if (!miss1)begin
-                    proc_rdata = cache1[proc_addr[3:2]][ proc_addr[1:0]*32+31 -: 32]; //hit
+                    proc_rdata = cache1[proc_addr[3:2]][ (proc_addr[1:0] << 5)+31 -: 32]; //hit
                 end
             end
             else if (!miss & proc_write) begin
                 if (!miss0)begin
-                    nxt_cache0[proc_addr[3:2]][ proc_addr[1:0]*32+31 -: 32] = proc_wdata; //data
+                    nxt_cache0[proc_addr[3:2]][ (proc_addr[1:0] << 5)+31 -: 32] = proc_wdata; //data
                     nxt_cache0[proc_addr[3:2]][153:128] = proc_addr[29:4]; //tags
                     nxt_cache0[proc_addr[3:2]][154] = 1; //dirty
                     nxt_cache0[proc_addr[3:2]][155] = 1; //valid
                 end
                 else if (!miss1) begin
-                    nxt_cache1[proc_addr[3:2]][ proc_addr[1:0]*32+31 -: 32] = proc_wdata; //data
+                    nxt_cache1[proc_addr[3:2]][ (proc_addr[1:0] << 5)+31 -: 32] = proc_wdata; //data
                     nxt_cache1[proc_addr[3:2]][153:128] = proc_addr[29:4]; //tags
                     nxt_cache1[proc_addr[3:2]][154] = 1; //dirty
                     nxt_cache1[proc_addr[3:2]][155] = 1; //valid
