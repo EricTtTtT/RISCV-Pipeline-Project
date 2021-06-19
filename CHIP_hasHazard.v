@@ -460,11 +460,10 @@
 			STATE_compare_tag:begin
 				proc_stall = miss;
 
-
 				//prefetch
-				mem_read = !mem_ready;
-				mem_addr  =  proc_addr[29:2];
-				mem_addr_temp_nxt = (proc_addr[29:2]==mem_addr_temp)? mem_addr_temp : mem_addr;
+				//mem_read = !mem_ready;
+				//mem_addr  =  proc_addr[29:2];
+				//mem_addr_temp_nxt = (proc_addr[29:2]==mem_addr_temp)? mem_addr_temp : mem_addr;
 
 				if (!miss & proc_read)begin
 					if (!miss0)begin
@@ -613,6 +612,7 @@ module RISCV_Pipeline(
 	reg [31:0] PC_nxt;
 	reg [31:0] PC_ID, PC_EX;
 	reg [31:0] PC_B_ID, PC_jalr_ID;
+	reg [31:0] PC_FA_j;
 
 	//========= Registers ========= 
 	reg [31:0] register [0:31];
@@ -670,7 +670,7 @@ module RISCV_Pipeline(
 	reg ctrl_jalr_ID,		ctrl_jalr_EX; 	//在EX要計算是否要PC+4
 	reg ctrl_jal_ID,		ctrl_jal_EX; 	//
 	reg ctrl_beq_ID;	//beq 在ID做完就沒事了
-	reg ctrl_bne_ID;	//bne 在ID做完就沒事了
+	reg ctrl_bne_ID;	//beq 在ID做完就沒事了
 	reg ctrl_memread_ID,	ctrl_memread_EX, 	ctrl_memread_MEM;
 	reg ctrl_memtoreg_ID,	ctrl_memtoreg_EX, 	ctrl_memtoreg_MEM, 	ctrl_memtoreg_WB;
 	reg ctrl_memwrite_ID, 	ctrl_memwrite_EX, 	ctrl_memwrite_MEM; 
@@ -692,10 +692,9 @@ module RISCV_Pipeline(
 	parameter B_type = 3'd3;
 	parameter J_type = 3'd6;
 
-	reg equal_1,equal_2,equal_3,equal_4,equal_5,equal_6,equal_7,equal_8,equal_9,equal_10,equal_11,equal_12,equal_13;
-
 	//========= Wire assignment ==========
-	assign inst_IF = (ctrl_bj_taken|ctrl_jalr_ID)? 32'h00000013:{ICACHE_rdata[7:0],ICACHE_rdata[15:8],ICACHE_rdata[23:16],ICACHE_rdata[31:24]};
+	//assign inst_IF = (ctrl_bj_taken|ctrl_jalr_ID)? 32'h00000013:{ICACHE_rdata[7:0],ICACHE_rdata[15:8],ICACHE_rdata[23:16],ICACHE_rdata[31:24]};
+	assign inst_IF = ctrl_bj_taken? 32'h00000013:ctrl_jalr_ID?32'h00000013:{ICACHE_rdata[7:0],ICACHE_rdata[15:8],ICACHE_rdata[23:16],ICACHE_rdata[31:24]};
 
 	assign op = inst_ID[6:0];
 	assign rd_ID = inst_ID[11:7];  //rd;
@@ -706,7 +705,6 @@ module RISCV_Pipeline(
 
 	assign rs1_data_ID = register[rs1_ID];
 	assign rs2_data_ID = register[rs2_ID];
-
 
 	//========== type =============
 	// always @(*)begin
@@ -800,6 +798,36 @@ module RISCV_Pipeline(
 	end
 
 	//======== alu_ctrl ========
+	always @(*)begin
+		alu_ctrl_ID[3] = !func3[1] & func3[0] & !op[6];
+		alu_ctrl_ID[2] = func3[2] & func3[0];
+		alu_ctrl_ID[1] = func3[0];
+		alu_ctrl_ID[0] = (func3[2] & !func3[1]) | (op[6] & !op[0]) | (func7[5] & !func3[2] & !func3[0] & op[5]);
+	end
+	// always @(*)begin
+	// 	if (!op[6]&!op[5]&op[4]&!op[3]&!op[2])begin//I-type
+	// 		if (func3[2]&!func3[1]&func3[0]) alu_ctrl_ID = func7[5]? 4'd8:4'd7; //srai, srli
+	// 		else if (!func3[2]&!func3[1]&func3[0]) alu_ctrl_ID = 4'd6; //slli
+	// 		else if (!func3[2]&func3[1]&!func3[0]) alu_ctrl_ID = 4'd5; //slti
+	// 		else if (func3[2]&!func3[1]&!func3[0]) alu_ctrl_ID = 4'd4; ///xori
+	// 		else if (func3[2]&func3[1]&!func3[0]) alu_ctrl_ID = 4'd3; //ori
+	// 		else if (func3[2]&func3[1]&func3[0]) alu_ctrl_ID = 4'd2; //andi
+	// 		else alu_ctrl_ID = 4'd0; //addi
+	// 	end
+	// 	else if (!op[6]&op[5]&op[4]&!op[3]&!op[2])begin //R-type
+	// 		if (!func3[2]&!func3[1]&!func3[0]) alu_ctrl_ID = func7[5]? 4'd1:4'd0; //sub, add
+	// 		else if (func3[2]&func3[1]&func3[0]) alu_ctrl_ID = 4'd2; //and
+	// 		else if (func3[2]&func3[1]&!func3[0]) alu_ctrl_ID = 4'd3; //or
+	// 		else if (func3[2]&!func3[1]&!func3[0]) alu_ctrl_ID = 4'd4; //xor
+	// 		else alu_ctrl_ID = 4'd5; //slt
+	// 	end
+	// 	else if (op[6]&op[5]&!op[4]&!op[3]&!op[2])begin //beq, bne
+	// 		alu_ctrl_ID = 4'd1;
+	// 	end
+	// 	else begin //jal, sw
+	// 		alu_ctrl_ID = 4'd0;
+	// 	end
+	// end
 		// always @(*)begin
 		// 	if (op[6:2]==5'b00100)begin//I-type
 		// 		if (func3==3'b101) alu_ctrl_ID = func7[5]? 4'd8:4'd7; //srai, srli
@@ -825,38 +853,12 @@ module RISCV_Pipeline(
 		// 	end
 	// end
 
-	always @(*)begin
-		if (!op[6]&!op[5]&op[4]&!op[3]&!op[2])begin//I-type
-			if (func3[2]&!func3[1]&func3[0]) alu_ctrl_ID = func7[5]? 4'd8:4'd7; //srai, srli
-			else if (!func3[2]&!func3[1]&func3[0]) alu_ctrl_ID = 4'd6; //slli
-			else if (!func3[2]&func3[1]&!func3[0]) alu_ctrl_ID = 4'd5; //slti
-			else if (func3[2]&!func3[1]&!func3[0]) alu_ctrl_ID = 4'd4; ///xori
-			else if (func3[2]&func3[1]&!func3[0]) alu_ctrl_ID = 4'd3; //ori
-			else if (func3[2]&func3[1]&func3[0]) alu_ctrl_ID = 4'd2; //andi
-			else alu_ctrl_ID = 4'd0; //addi
-		end
-		else if (!op[6]&op[5]&op[4]&!op[3]&!op[2])begin //R-type
-			if (!func3[2]&!func3[1]&!func3[0]) alu_ctrl_ID = func7[5]? 4'd1:4'd0; //sub, add
-			else if (func3[2]&func3[1]&func3[0]) alu_ctrl_ID = 4'd2; //and
-			else if (func3[2]&func3[1]&!func3[0]) alu_ctrl_ID = 4'd3; //or
-			else if (func3[2]&!func3[1]&!func3[0]) alu_ctrl_ID = 4'd4; //xor
-			else alu_ctrl_ID = 4'd5; //slt
-		end
-		else if (op[6]&op[5]&!op[4]&!op[3]&!op[2])begin //beq, bne
-			alu_ctrl_ID = 4'd1;
-		end
-		else begin //jal, sw
-			alu_ctrl_ID = 4'd0;
-		end
-	end
-
-
 	//======== mux & comb ckt ========
 	always @(*)begin
 
 		//Dmem_read		(wen, addr, data)
 		DCACHE_ren = ctrl_memread_MEM;
-		DCACHE_addr = (ctrl_memread_MEM|ctrl_memwrite_MEM)? alu_out_MEM[31:2] : 0; //設條件否則會一直輸出addr
+		DCACHE_addr = alu_out_MEM[31:2]; 
 		read_data_MEM = {DCACHE_rdata[7:0],DCACHE_rdata[15:8],DCACHE_rdata[23:16],DCACHE_rdata[31:24]};
 		//tb中rd_w_MEM_real不會被用到，lw後的rd不會馬上被用到
 		rd_w_MEM_real = (ctrl_memread_MEM)? read_data_MEM : rd_w_MEM; //rd在mem stage也可能被改(lw)
@@ -911,18 +913,20 @@ module RISCV_Pipeline(
 		
 		//jalr = rs1 + imme (rs1 forwarded)
 		case(ctrl_FA_j) //實際上只有00,10會成立
-			2'b00: PC_jalr_ID = rs1_data_ID + imme_ID;
-			//2'b01: PC_jalr_ID = rd_w_EX + imme_ID;
-			2'b10: PC_jalr_ID = rd_w_MEM + imme_ID;
-			default: PC_jalr_ID = rs1_data_ID + imme_ID;
+			2'b00: PC_FA_j = rs1_data_ID;
+			//2'b01: PC_jalr_ID = rd_w_EX;
+			2'b10: PC_FA_j = rd_w_MEM;
+			default: PC_FA_j = rs1_data_ID;
 		endcase
+		PC_jalr_ID = imme_ID + PC_FA_j;
 
-		case(ctrl_FA_j) //實際上只有01
-			//2'b00: compare_rs1 = rs1_data_ID;
-			2'b01: compare_rs1 = rd_w_EX;
-			//2'b10: compare_rs1 = rd_w_MEM;
-			default: compare_rs1 = rs1_data_ID;
-		endcase
+		// case(ctrl_FA_j) //實際上只有01
+		// 	//2'b00: compare_rs1 = rs1_data_ID;
+		// 	2'b01: compare_rs1 = rd_w_EX;
+		// 	//2'b10: compare_rs1 = rd_w_MEM;
+		// 	default: compare_rs1 = rs1_data_ID;
+		// endcase
+		compare_rs1 = rd_w_EX;
 		// case(ctrl_FB_j) //實際上rs2不需要forwarding
 		// 	2'b00: compare_rs2 = rs2_data_ID;
 		// 	2'b01: compare_rs2 = rd_w_EX;
@@ -931,13 +935,13 @@ module RISCV_Pipeline(
 		// endcase
 		compare_rs2 = rs2_data_ID;
 
-
 		//PC_nxt, branch,jal or jalr or pc+4
 		PC_B_ID = PC_ID + imme_ID;
 
 		ctrl_bj_taken = ( ((ctrl_beq_ID & compare_rs1==compare_rs2) | ctrl_bne_ID & (compare_rs1!=compare_rs2)) | ctrl_jal_ID);
 
-		PC_nxt = ctrl_jalr_ID? PC_jalr_ID : ctrl_bj_taken? PC_B_ID : PC+4; //rs1+imme 或 pc+imme 或 pc+4;
+		//PC_nxt = ctrl_jalr_ID? PC_jalr_ID : ctrl_bj_taken? PC_B_ID : PC+4; //rs1+imme 或 pc+imme 或 pc+4;
+		PC_nxt = ctrl_bj_taken? PC_B_ID : ctrl_jalr_ID? PC_jalr_ID : PC+4;
 	end
 
 
@@ -945,56 +949,43 @@ module RISCV_Pipeline(
 	always @(*)begin
 		//Forwding
 		//rs1 at ID, for jalr
-
-		equal_1 = (rd_EX[4]~^1'b0) & (((rd_EX[3]~^1'b0)&(rd_EX[2]~^1'b0)) & ((rd_EX[1]~^1'b0)&(rd_EX[0]~^1'b0)));
-		equal_2 = (rd_EX[4]~^rs1_ID[4]) & (((rd_EX[3]~^rs1_ID[3])&(rd_EX[2]~^rs1_ID[2])) & ((rd_EX[1]~^rs1_ID[1])&(rd_EX[0]~^rs1_ID[0])));
-		equal_3 = (rd_MEM[4]~^1'b0) & (((rd_MEM[3]~^1'b0)&(rd_MEM[2]~^1'b0)) & ((rd_MEM[1]~^1'b0)&(rd_MEM[0]~^1'b0)));
-		equal_4 = (rd_MEM[4]~^rs1_ID[4]) & (((rd_MEM[3]~^rs1_ID[3])&(rd_MEM[2]~^rs1_ID[2])) & ((rd_MEM[1]~^rs1_ID[1])&(rd_MEM[0]~^rs1_ID[0])));
-		if ( (ctrl_jalr_ID|ctrl_beq_ID|ctrl_bne_ID) & ctrl_regwrite_EX & !equal_1 & equal_2)begin //EX
+		if ( (ctrl_jalr_ID|ctrl_beq_ID|ctrl_bne_ID) & ctrl_regwrite_EX & rd_EX!=0 & rd_EX==rs1_ID)begin //EX
 			ctrl_FA_j = 2'b01; 
 		end
-		else if ( (ctrl_jalr_ID|ctrl_beq_ID|ctrl_bne_ID) & ctrl_regwrite_MEM & !equal_3 & equal_4)begin //MEM
+		else if ( (ctrl_jalr_ID|ctrl_beq_ID|ctrl_bne_ID) & ctrl_regwrite_MEM & rd_MEM!=0 & rd_MEM==rs1_ID)begin //MEM
 			ctrl_FA_j = 2'b10; 
 		end
 		else begin
 			ctrl_FA_j = 2'b00;
 		end
 
-
-		equal_6 = (rd_EX[4]~^rs2_ID[4]) & (((rd_EX[3]~^rs2_ID[3])&(rd_EX[2]~^rs2_ID[2])) & ((rd_EX[1]~^rs2_ID[1])&(rd_EX[0]~^rs2_ID[0])));
-		equal_7 = (rd_MEM[4]~^rs2_ID[4]) & (((rd_MEM[3]~^rs2_ID[3])&(rd_MEM[2]~^rs2_ID[2])) & ((rd_MEM[1]~^rs2_ID[1])&(rd_MEM[0]~^rs2_ID[0])));
 		//rs2 at ID, for jalr
-		if ( (ctrl_beq_ID|ctrl_bne_ID) & ctrl_regwrite_EX & !equal_1 & equal_6)begin //EX
-			ctrl_FB_j = 2'b01;  
-		end
-		else if ( (ctrl_beq_ID|ctrl_bne_ID) & ctrl_regwrite_MEM & !equal_3 & equal_7)begin //MEM
-			ctrl_FB_j = 2'b10;  
-		end
-		else begin
-			ctrl_FB_j = 2'b00;
-		end
+		// if ( (ctrl_beq_ID|ctrl_bne_ID) & ctrl_regwrite_EX & rd_EX!=0 & rd_EX==rs2_ID)begin //EX
+		// 	ctrl_FB_j = 2'b01;  
+		// end
+		// else if ( (ctrl_beq_ID|ctrl_bne_ID) & ctrl_regwrite_MEM & rd_MEM!=0 & rd_MEM==rs2_ID)begin //MEM
+		// 	ctrl_FB_j = 2'b10;  
+		// end
+		// else begin
+		// 	ctrl_FB_j = 2'b00;
+		// end
 
-		equal_7 = (rd_MEM[4]~^rs1_EX[4]) & (((rd_MEM[3]~^rs1_EX[3])&(rd_MEM[2]~^rs1_EX[2])) & ((rd_MEM[1]~^rs1_EX[1])&(rd_MEM[0]~^rs1_EX[0])));
-		equal_8 = (rd_WB[4]~^1'b0) & (((rd_WB[3]~^1'b0)&(rd_WB[2]~^1'b0)) & ((rd_WB[1]~^1'b0)&(rd_WB[0]~^1'b0)));
-		equal_9 = (rd_WB[4]~^rs1_EX[4]) & (((rd_WB[3]~^rs1_EX[3])&(rd_WB[2]~^rs1_EX[2])) & ((rd_WB[1]~^rs1_EX[1])&(rd_WB[0]~^rs1_EX[0])));
 		//(rs1 at EX)
-		if (ctrl_regwrite_MEM & !equal_3 & equal_7 )begin
+		if (ctrl_regwrite_MEM & rd_MEM!=0 & rd_MEM==rs1_EX)begin
 			ctrl_FA = 2'b01; //差1
 		end
-		else if (ctrl_regwrite_WB & !equal_8 & equal_9)begin
+		else if (ctrl_regwrite_WB & rd_WB!=0 & rd_WB==rs1_EX)begin
 			ctrl_FA = 2'b10; //差2
 		end
 		else begin
 			ctrl_FA = 2'b00;
 		end
 
-		equal_10 = (rd_MEM[4]~^rs2_EX[4]) & (((rd_MEM[3]~^rs2_EX[3])&(rd_MEM[2]~^rs2_EX[2])) & ((rd_MEM[1]~^rs2_EX[1])&(rd_MEM[0]~^rs2_EX[0])));
-		equal_11 = (rd_WB[4]~^rs2_EX[4]) & (((rd_WB[3]~^rs2_EX[3])&(rd_WB[2]~^rs2_EX[2])) & ((rd_WB[1]~^rs2_EX[1])&(rd_WB[0]~^rs2_EX[0])));
 		//(rs2 at EX)
-		if (ctrl_regwrite_MEM & !equal_3 & equal_10)begin //& type_EX!=3'd1 若是I-type，不需要用到r2
+		if (ctrl_regwrite_MEM & rd_MEM!=0 & rd_MEM==rs2_EX)begin //& type_EX!=3'd1 若是I-type，不需要用到r2
 			ctrl_FB = 2'b01;
 		end
-		else if (ctrl_regwrite_WB & !equal_8 & equal_11)begin
+		else if (ctrl_regwrite_WB & rd_WB!=0 & rd_WB==rs2_EX)begin
 			ctrl_FB = 2'b10;
 		end
 		else begin
@@ -1002,11 +993,10 @@ module RISCV_Pipeline(
 		end
 
 
-		equal_12 = (rd_EX[4]~^rs1_ID[4]) & (((rd_EX[3]~^rs1_ID[3])&(rd_EX[2]~^rs1_ID[2])) & ((rd_EX[1]~^rs1_ID[1])&(rd_EX[0]~^rs1_ID[0])));
-		equal_13 = (rd_EX[4]~^rs2_ID[4]) & (((rd_EX[3]~^rs2_ID[3])&(rd_EX[2]~^rs2_ID[2])) & ((rd_EX[1]~^rs2_ID[1])&(rd_EX[0]~^rs2_ID[0])));
 		//load use hazard
-		ctrl_lw_stall = (ctrl_memread_EX & ( equal_12 | equal_13));
+		ctrl_lw_stall = (ctrl_memread_EX & (rd_EX==rs1_ID | rd_EX==rs2_ID));
 	end
+
 
 	integer i;
 	always @(posedge clk )begin
@@ -1014,7 +1004,6 @@ module RISCV_Pipeline(
 			for (i = 0 ; i<32; i=i+1)begin
 				register[i] <= 0 ;
 			end
-
 			imme_EX <= 0 ;
 
 			//ctrl
@@ -1066,7 +1055,7 @@ module RISCV_Pipeline(
 		end
 		else if (!ICACHE_stall & !DCACHE_stall ) begin
 			if (ctrl_regwrite_MEM & rd_MEM!=0)begin
-				register[rd_MEM] <= rd_w_MEM_real; //可用comb??????????????????????????????????????????
+				register[rd_MEM] <= rd_w_MEM_real; //可用comb??
 			end
 			else begin
 				register[rd_MEM] <= register[rd_MEM];
