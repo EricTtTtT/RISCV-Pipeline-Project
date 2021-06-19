@@ -165,6 +165,7 @@
 	reg [155:0] cache1 [0:3]; // "1" bit lru, "1" bit valid, "26" bits tags, "128" bits data. =157 bits
 	reg [155:0] nxt_cache0 [0:3]; // "1" bit lru, "1" bit valid, "26" bits tags, "128" bits data. =157 bits
 	reg [155:0] nxt_cache1 [0:3]; // "1" bit lru, "1" bit valid, "26" bits tags, "128" bits data. =157 bits
+	reg[31:0] data0, data1;
 
 	reg [1:0] state;
 	reg [1:0] nxt_state;
@@ -235,6 +236,14 @@
 		mem_write = 0;
 		mem_addr_temp_nxt = 0 ;
 		proc_stall = 0;
+		
+		case(proc_addr[1:0])
+			2'b00:begin data0=cache0[proc_addr[3:2]][31:0]; data1=cache1[proc_addr[3:2]][31:0];end
+			2'b01:begin data0=cache0[proc_addr[3:2]][63:32]; data1=cache1[proc_addr[3:2]][63:32];end
+			2'b10:begin data0=cache0[proc_addr[3:2]][95:64]; data1=cache1[proc_addr[3:2]][95:64];end
+			2'b11:begin data0=cache0[proc_addr[3:2]][127:96]; data1=cache1[proc_addr[3:2]][127:96];end
+		endcase
+
 		case(state)
 			STATE_compare_tag:begin
 				proc_stall = miss;
@@ -246,10 +255,10 @@
 
 				if (!miss & proc_read)begin
 					if (!miss0)begin
-						proc_rdata = cache0[proc_addr[3:2]][ (proc_addr[1:0]<<5)+31 -: 32]; //hit
+						proc_rdata = data0; //hit
 					end
 					else if (!miss1)begin
-						proc_rdata = cache1[proc_addr[3:2]][ (proc_addr[1:0]<<5)+31 -: 32]; //hit
+						proc_rdata = data1; //hit
 					end
 				end        
 			end
@@ -358,6 +367,8 @@
 	reg [156:0] cache1 [0:3]; // "1" bit lru, "1" bit valid, "1"bit dirty, "26" bits tags, "128" bits data. =157 bits
 	reg [156:0] nxt_cache0 [0:3]; // "1" bit lru, "1" bit valid, "1"bit dirty, "26" bits tags, "128" bits data. =157 bits
 	reg [156:0] nxt_cache1 [0:3]; // "1" bit lru, "1" bit valid, "1"bit dirty, "26" bits tags, "128" bits data. =157 bits
+	reg [31:0] data0,data1;
+
 
 	reg [1:0] state;
 	reg [1:0] nxt_state;
@@ -389,32 +400,12 @@
 	assign miss = (proc_read|proc_write) & miss0 & miss1;  // == hit1 | hit2
 
 	//==== combinational circuit ==============================
-	reg [27:0] mem_addr_temp_nxt,mem_addr_temp;
 
 	always @(*)begin
 		case(state)
 			STATE_compare_tag:begin
 				if (miss & !dirty)begin //clean
 					nxt_state = STATE_allocate;
-				end
-				else if (miss & !dirty0 ) begin //is miss and 第一排!dirty
-					if (!lru0)begin             //第一排的優先的話就allocate
-						nxt_state = STATE_allocate;
-					end
-					else begin                  //不優先的話就先write_back另一邊，接著再allocate，
-						nxt_state = STATE_write_back;
-					end
-				end
-				else if (miss & !dirty1 ) begin //is miss and dirty
-					if (!lru1)begin
-						nxt_state = STATE_allocate;
-					end
-					else begin
-						nxt_state = STATE_write_back;
-					end
-				end
-				else if (miss & dirty)begin
-					nxt_state = STATE_write_back;
 				end
 				else begin
 					nxt_state = STATE_compare_tag;
@@ -455,23 +446,24 @@
 		mem_addr  = 0;
 		mem_read = 0;
 		mem_write = 0;
-		mem_addr_temp_nxt = 0 ;
+		case(proc_addr[1:0])
+			2'b00:begin data0=cache0[proc_addr[3:2]][31:0]; data1=cache1[proc_addr[3:2]][31:0];end
+			2'b01:begin data0=cache0[proc_addr[3:2]][63:32]; data1=cache1[proc_addr[3:2]][63:32];end
+			2'b10:begin data0=cache0[proc_addr[3:2]][95:64]; data1=cache1[proc_addr[3:2]][95:64];end
+			2'b11:begin data0=cache0[proc_addr[3:2]][127:96]; data1=cache1[proc_addr[3:2]][127:96];end
+		endcase
+
 		case(state)
 			STATE_compare_tag:begin
 				proc_stall = miss;
 
-				//prefetch
-				//mem_read = !mem_ready;
-				//mem_addr  =  proc_addr[29:2];
-				//mem_addr_temp_nxt = (proc_addr[29:2]==mem_addr_temp)? mem_addr_temp : mem_addr;
-
 				if (!miss & proc_read)begin
 					if (!miss0)begin
-						proc_rdata = cache0[proc_addr[3:2]][ (proc_addr[1:0]<<5)+31 -: 32]; //hit
+						proc_rdata = data0; //hit
 					end
 					else if (!miss1)begin
-						proc_rdata = cache1[proc_addr[3:2]][ (proc_addr[1:0]<<5)+31 -: 32]; //hit
-					end
+						proc_rdata = data1; //hit
+					end    
 				end
 				else if (!miss & proc_write) begin
 					if (!miss0)begin
@@ -576,7 +568,6 @@
 				cache1[i] <=  { 1'b1 , 1'b1, {155{1'b0}} };
 			end
 			state <= STATE_idle;
-			mem_addr_temp <= 0;
 		end
 		else begin
 			for (i = 0; i<8; i=i+1)begin
@@ -584,7 +575,6 @@
 				cache1[i] <= nxt_cache1[i];
 			end
 			state <= nxt_state;
-			mem_addr_temp <= mem_addr_temp_nxt;
 		end
 	end
 
