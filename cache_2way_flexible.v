@@ -139,7 +139,7 @@ output reg [127:0]	mem_wdata;
 						4'b0110: cache2_next[block_addr][95:64] = proc_wdata;
 						4'b0111: cache2_next[block_addr][127:96] = proc_wdata;
 					endcase
-					if (hit1) begin
+					if (hit1) begin     // TODO: how to write in if else?
 						cache1_next[block_addr][127+TAG_SIZE : 128] = tag;
                     	cache1_next[block_addr][BLOCK_hSIZE-1 : BLOCK_hSIZE-2] = 2'b11;
 					end
