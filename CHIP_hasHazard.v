@@ -763,7 +763,7 @@ module RISCV_Pipeline(
 		B_type: begin
 			ctrl_beq_ID = !func3[0];
 			ctrl_bne_ID = func3[0];
-			ctrl_ALUSrc_ID = 1;			
+			ctrl_ALUSrc_ID = 0;			
 			imme_ID = { {20{inst_ID[31]}}, inst_ID[7], inst_ID[30:25], inst_ID[11:8], 1'b0 }; //beq, bne
 		end
 
@@ -790,11 +790,11 @@ module RISCV_Pipeline(
 
 	//======== alu_ctrl ========
 	always @(*)begin
-		alu_ctrl_ID[3] = !func3[1] & func3[0] & !op[6];
-		alu_ctrl_ID[2] = (func3[2] & func3[0]) | (!func3[2] & func3[1] & !func3[0]);
+		alu_ctrl_ID[3] = !func3[1] & func3[0];
+		alu_ctrl_ID[2] = (func3[2] & func3[0]) | (!func3[2] & func3[1] & op[4]);
 		alu_ctrl_ID[1] = func3[2];
-		alu_ctrl_ID[0] = (func7[5] & func3[2] & !func3[1] & func3[0]) | (func3[2]&!func3[1]&!func3[0]) | (op[6] & !op[2]) | (func7[5] & !func3[2] & !func3[0] & op[5] );
-		//( (func3[2]&(!func3[0]|(!func3[1]&func3[0]&func7[5]))) | (op[6] & !op[2]) | (func7[5] & !func3[2] & !func3[0] & op[5]) );
+		alu_ctrl_ID[0] = (func7[5] & func3[2] & !func3[1] & func3[0]) | (func3[2]&func3[1]) | (func7[5] & !func3[2]  & op[5] );
+		alu_ctrl_ID[0] = ( (func7[5] & !func3[1]) & ((func3[2]&func3[0]) | op[5]) )  | (func3[2]&func3[1]);
 	end
 	// always @(*)begin
 	// 	if (!op[6]&!op[5]&op[4]&!op[3]&!op[2])begin//I-type
@@ -820,29 +820,30 @@ module RISCV_Pipeline(
 	// 		alu_ctrl_ID = 4'd0;
 	// 	end
 	// end
-		// always @(*)begin
-		// 	if (op[6:2]==5'b00100)begin//I-type
-		// 		if (func3==3'b101) alu_ctrl_ID = func7[5]? 4'd8:4'd7; //srai, srli
-		// 		else if (func3==3'b001) alu_ctrl_ID = 4'd6; //slli
-		// 		else if (func3==3'b010) alu_ctrl_ID = 4'd5; //slti
-		// 		else if (func3==3'b100) alu_ctrl_ID = 4'd4; ///xori
-		// 		else if (func3==3'b110) alu_ctrl_ID = 4'd3; //ori
-		// 		else if (func3==3'b111) alu_ctrl_ID = 4'd2; //andi
-		// 		else alu_ctrl_ID = 4'd0; //addi
-		// 	end
-		// 	else if (op[6:2]==5'b01100)begin //R-type
-		// 		if (func3==3'b000) alu_ctrl_ID = func7[5]? 4'd1:4'd0; //sub, add
-		// 		else if (func3==3'b111) alu_ctrl_ID = 4'd2; //and
-		// 		else if (func3==3'b110) alu_ctrl_ID = 4'd3; //or
-		// 		else if (func3==3'b100) alu_ctrl_ID = 4'd4; //xor
-		// 		else alu_ctrl_ID = 4'd5; //slt
-		// 	end
-		// 	else if (op==7'b1100011)begin //beq, bne
-		// 		alu_ctrl_ID = 4'd1;
-		// 	end
-		// 	else begin //jal, sw
-		// 		alu_ctrl_ID = 4'd0;
-		// 	end
+
+	// always @(*)begin
+	// 	if (op[6:2]==5'b00100)begin//I-type
+	// 		if (func3==3'b101) alu_ctrl_ID = func7[5]? 4'd8:4'd7; //srai, srli
+	// 		else if (func3==3'b001) alu_ctrl_ID = 4'd6; //slli
+	// 		else if (func3==3'b010) alu_ctrl_ID = 4'd5; //slti
+	// 		else if (func3==3'b100) alu_ctrl_ID = 4'd4; ///xori
+	// 		else if (func3==3'b110) alu_ctrl_ID = 4'd3; //ori
+	// 		else if (func3==3'b111) alu_ctrl_ID = 4'd2; //andi
+	// 		else alu_ctrl_ID = 4'd0; //addi
+	// 	end
+	// 	else if (op[6:2]==5'b01100)begin //R-type
+	// 		if (func3==3'b000) alu_ctrl_ID = func7[5]? 4'd1:4'd0; //sub, add
+	// 		else if (func3==3'b111) alu_ctrl_ID = 4'd2; //and
+	// 		else if (func3==3'b110) alu_ctrl_ID = 4'd3; //or
+	// 		else if (func3==3'b100) alu_ctrl_ID = 4'd4; //xor
+	// 		else alu_ctrl_ID = 4'd5; //slt
+	// 	end
+	// 	else if (op==7'b1100011)begin //beq, bne
+	// 		alu_ctrl_ID = 4'd1;
+	// 	end
+	// 	else begin //jal, sw
+	// 		alu_ctrl_ID = 4'd0;
+	// 	end
 	// end
 
 	//======== mux & comb ckt ========
@@ -890,9 +891,9 @@ module RISCV_Pipeline(
 		case (alu_ctrl_EX)
 			4'd0: alu_out_EX = alu_in1 + alu_in2;
 			4'd1: alu_out_EX = alu_in1 - alu_in2;
-			4'd6: alu_out_EX = alu_in1 & alu_in2;
-			4'd2: alu_out_EX = alu_in1 | alu_in2;
-			4'd3: alu_out_EX = alu_in1 ^ alu_in2;
+			4'd7: alu_out_EX = alu_in1 & alu_in2;
+			4'd3: alu_out_EX = alu_in1 | alu_in2;
+			4'd2: alu_out_EX = alu_in1 ^ alu_in2;
 			4'd4: alu_out_EX = alu_in1 < alu_in2;
 			4'd8: alu_out_EX = alu_in1 << alu_in2;
 			4'd14: alu_out_EX = alu_in1 >> alu_in2;
