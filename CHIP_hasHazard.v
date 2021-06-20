@@ -684,8 +684,8 @@ module RISCV_Pipeline(
 	parameter J_type = 3'd6;
 
 	//========= Wire assignment ==========
-	//assign inst_IF = (ctrl_bj_taken|ctrl_jalr_ID)? 32'h00000013:{ICACHE_rdata[7:0],ICACHE_rdata[15:8],ICACHE_rdata[23:16],ICACHE_rdata[31:24]};
-	assign inst_IF = !PC_start? 32'h00000013 : ctrl_bj_taken? 32'h00000013:ctrl_jalr_ID?32'h00000013:{ICACHE_rdata[7:0],ICACHE_rdata[15:8],ICACHE_rdata[23:16],ICACHE_rdata[31:24]};
+	assign inst_IF = (ctrl_bj_taken|ctrl_jalr_ID)? 32'h00000013:{ICACHE_rdata[7:0],ICACHE_rdata[15:8],ICACHE_rdata[23:16],ICACHE_rdata[31:24]};
+	//assign inst_IF = !PC_start? 32'h00000013 : ctrl_bj_taken? 32'h00000013:ctrl_jalr_ID?32'h00000013:{ICACHE_rdata[7:0],ICACHE_rdata[15:8],ICACHE_rdata[23:16],ICACHE_rdata[31:24]};
 
 	assign op = inst_ID[6:0];
 	assign rd_ID = inst_ID[11:7];  //rd;
@@ -868,7 +868,8 @@ module RISCV_Pipeline(
 		DCACHE_wdata = {wdata_MEM[7:0],wdata_MEM[15:8],wdata_MEM[23:16],wdata_MEM[31:24]};
 
 		//Icache
-		ICACHE_ren = PC_start? 1'b1:1'b0;
+		//ICACHE_ren = PC_start? 1'b1:1'b0;
+		ICACHE_ren = 1'b1;
 		ICACHE_wen = 1'b0;
 		ICACHE_wdata = 0;
 		ICACHE_addr = PC[31:2]; 

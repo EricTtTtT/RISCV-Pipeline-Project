@@ -167,6 +167,8 @@
 	reg [155:0] nxt_cache1 [0:3]; // "1" bit lru, "1" bit valid, "26" bits tags, "128" bits data. =157 bits
 	reg[31:0] data0, data1;
 
+	reg start;
+
 	reg [1:0] state;
 	reg [1:0] nxt_state;
 
@@ -293,14 +295,21 @@
 			end
 			state <= STATE_idle;
 			mem_addr_temp <= 0;
+			start <= 0;
 		end
-		else begin
+		else if (start) begin
 			for (i = 0; i<4; i=i+1)begin
 				cache0[i] <= nxt_cache0[i];
 				cache1[i] <= nxt_cache1[i];
 			end
 			state <= nxt_state;
 			mem_addr_temp <= mem_addr_temp_nxt;
+			start <= start;
+		end
+		else begin
+			state <= state;
+			mem_addr_temp <= mem_addr_temp;
+			start <= 1;
 		end
 	end
 
@@ -356,6 +365,8 @@
 	reg [156:0] nxt_cache0 [0:3]; // "1" bit lru, "1" bit valid, "1"bit dirty, "26" bits tags, "128" bits data. =157 bits
 	reg [156:0] nxt_cache1 [0:3]; // "1" bit lru, "1" bit valid, "1"bit dirty, "26" bits tags, "128" bits data. =157 bits
 	reg [31:0] data0,data1;
+
+	reg start;
 
 	reg [1:0] state;
 	reg [1:0] nxt_state;
@@ -564,17 +575,23 @@
 	always@( posedge clk ) begin
 		if( proc_reset ) begin
 			for (i = 0 ; i < 4 ; i=i+1)begin
-				cache0[i] <=  { 1'b0 , 1'b1, {155{1'b0}} };
-				cache1[i] <=  { 1'b0 , 1'b1, {155{1'b0}} };
+				cache0[i] <=  0;
+				cache1[i] <=  0;
 			end
 			state <= STATE_idle;
+			start <= 0;
 		end
-		else begin
-			for (i = 0; i < 4; i=i+1)begin
+		else if (start) begin
+			for (i = 0; i<4; i=i+1)begin
 				cache0[i] <= nxt_cache0[i];
 				cache1[i] <= nxt_cache1[i];
 			end
 			state <= nxt_state;
+			start <= start;
+		end
+		else begin
+			state <= state;
+			start <= 1;
 		end
 	end
 
@@ -631,7 +648,6 @@ module RISCV_Pipeline(
 	reg signed [31:0] rd_w_WB;
 	
 	reg signed [31:0] write_rd_WB;
-
 
 	reg [31:0] compare_rs1;
 	reg [31:0] compare_rs2;
@@ -944,6 +960,7 @@ module RISCV_Pipeline(
 		PC_nxt = ctrl_bj_taken? PC_B_ID : ctrl_jalr_ID? PC_jalr_ID : PC+4;
 	end
 
+	//comb write register
 	always @(*)begin
 		write_rd_WB =  ctrl_memtoreg_WB? read_data_WB : rd_w_WB;
 		register[0] = 0;
@@ -1042,7 +1059,7 @@ module RISCV_Pipeline(
 			ctrl_ALUSrc_EX <= 0;
 
 			//inst
-			inst_ID <= inst_IF;
+			inst_ID <= 32'h00000013;
 
 			//alu
 			alu_ctrl_EX <= 0;

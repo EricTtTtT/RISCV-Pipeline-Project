@@ -632,7 +632,6 @@ module RISCV_Pipeline(
 	
 	reg signed [31:0] write_rd_WB;
 
-
 	reg [31:0] compare_rs1;
 	reg [31:0] compare_rs2;
 
@@ -944,6 +943,7 @@ module RISCV_Pipeline(
 		PC_nxt = ctrl_bj_taken? PC_B_ID : ctrl_jalr_ID? PC_jalr_ID : PC+4;
 	end
 
+	//comb write register
 	always @(*)begin
 		write_rd_WB =  ctrl_memtoreg_WB? read_data_WB : rd_w_WB;
 		register[0] = 0;
@@ -1042,7 +1042,7 @@ module RISCV_Pipeline(
 			ctrl_ALUSrc_EX <= 0;
 
 			//inst
-			inst_ID <= inst_IF;
+			inst_ID <= 32'h00000013;
 
 			//alu
 			alu_ctrl_EX <= 0;
