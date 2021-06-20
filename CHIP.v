@@ -565,7 +565,7 @@
 		if( proc_reset ) begin
 			for (i = 0 ; i < 4 ; i=i+1)begin
 				cache0[i] <=  { 1'b0 , 1'b1, {155{1'b0}} };
-				cache1[i] <=  { 1'b1 , 1'b1, {155{1'b0}} };
+				cache1[i] <=  { 1'b0 , 1'b1, {155{1'b0}} };
 			end
 			state <= STATE_idle;
 		end
@@ -597,6 +597,7 @@ module RISCV_Pipeline(
 
 //==== input/output definition ============================
 
+	integer i;
 	//========= PC =========
 	reg [31:0] PC;
 	reg [31:0] PC_nxt;
@@ -607,6 +608,8 @@ module RISCV_Pipeline(
 
 	//========= Registers ========= 
 	reg [31:0] register [0:31];
+	reg [31:0] register_save [0:31];
+	reg [31:0] register_save_nxt [0:31];
 	wire [4:0] rs1_ID;	//rs1
 	reg [4:0] rs1_EX;	
 	wire [31:0] rs1_data_ID;
@@ -626,6 +629,9 @@ module RISCV_Pipeline(
 	reg signed [31:0] rd_w_MEM_real;
 	reg signed [31:0] rd_w_MEM;
 	reg signed [31:0] rd_w_WB;
+	
+	reg signed [31:0] write_rd_WB;
+
 
 	reg [31:0] compare_rs1;
 	reg [31:0] compare_rs2;
@@ -653,6 +659,7 @@ module RISCV_Pipeline(
 
 	//========= memory ========= 
 	reg [31:0] read_data_MEM; //read from mem
+	reg [31:0] read_data_WB; 
 
 	reg [31:0] wdata_EX; //write mem
 	reg [31:0] wdata_MEM;
@@ -937,6 +944,18 @@ module RISCV_Pipeline(
 		PC_nxt = ctrl_bj_taken? PC_B_ID : ctrl_jalr_ID? PC_jalr_ID : PC+4;
 	end
 
+	always @(*)begin
+		write_rd_WB =  ctrl_memtoreg_WB? read_data_WB : rd_w_WB;
+		register[0] = 0;
+
+		for (i = 1; i<32; i=i+1)begin
+			register[i] = (ctrl_regwrite_WB & (rd_WB==i))? write_rd_WB:register_save[i];
+		end
+		register_save_nxt[0] = 0;
+		for (i = 1; i<32; i=i+1)begin
+			register_save_nxt[i] = register[i];
+		end
+	end
 
 	//========= hazard ===========
 	always @(*)begin
@@ -991,12 +1010,15 @@ module RISCV_Pipeline(
 	end
 
 
-	integer i;
 	always @(posedge clk )begin
 		if (!rst_n)begin
-			for (i = 0 ; i<32; i=i+1)begin
-				register[i] <= 0 ;
+			// for (i = 0 ; i<32; i=i+1)begin
+			// 	register[i] <= 0 ;
+			// end
+			for (i = 0; i<32; i=i+1)begin
+				register_save[i] <= 0;
 			end
+			read_data_WB <= 0;			
 			imme_EX <= 0 ;
 
 			//ctrl
@@ -1044,16 +1066,20 @@ module RISCV_Pipeline(
 			PC_ID <= 0;
 			PC_EX <= 0;
 			PC <= 0;
-			PC_start = 0;
+			PC_start <= 0;
 
 		end
 		else if (!ICACHE_stall & !DCACHE_stall ) begin
-			if (ctrl_regwrite_MEM & rd_MEM!=0)begin
-				register[rd_MEM] <= rd_w_MEM_real; //comb?
+			// if (ctrl_regwrite_MEM & rd_MEM!=0)begin
+			// 	register[rd_MEM] <= rd_w_MEM_real; //可用comb?
+			// end
+			// else begin
+			// 	register[rd_MEM] <= register[rd_MEM];
+			// end
+			for (i = 0; i<32; i=i+1)begin
+				register_save[i] <= register_save_nxt[i];
 			end
-			else begin
-				register[rd_MEM] <= register[rd_MEM];
-			end
+			read_data_WB <= read_data_MEM;
 
 			imme_EX <= (!ctrl_lw_stall)? imme_ID : 0;
 			
@@ -1110,7 +1136,11 @@ module RISCV_Pipeline(
 		end
 		//============ stall ================
 		else begin 
-			register[rd_MEM] <= register[rd_MEM];
+			//register[rd_MEM] <= register[rd_MEM];
+			for (i = 0; i<32; i=i+1)begin
+				register_save[i] <= register_save[i];
+			end
+			read_data_WB <= read_data_WB;
 
 			//ctrl
 			ctrl_jalr_EX <= ctrl_jalr_EX;
@@ -1160,6 +1190,7 @@ module RISCV_Pipeline(
 			PC_ID <= PC_ID;
 			PC_EX <= PC_EX;
 			PC <= PC;
+			PC_start <= PC_start;
 			
 		end
 	end

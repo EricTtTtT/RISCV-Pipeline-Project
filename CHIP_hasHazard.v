@@ -565,7 +565,7 @@
 		if( proc_reset ) begin
 			for (i = 0 ; i < 4 ; i=i+1)begin
 				cache0[i] <=  { 1'b0 , 1'b1, {155{1'b0}} };
-				cache1[i] <=  { 1'b1 , 1'b1, {155{1'b0}} };
+				cache1[i] <=  { 1'b0 , 1'b1, {155{1'b0}} };
 			end
 			state <= STATE_idle;
 		end
@@ -1044,7 +1044,7 @@ module RISCV_Pipeline(
 			PC_ID <= 0;
 			PC_EX <= 0;
 			PC <= 0;
-			PC_start = 0;
+			PC_start <= 0;
 
 		end
 		else if (!ICACHE_stall & !DCACHE_stall ) begin
@@ -1160,6 +1160,7 @@ module RISCV_Pipeline(
 			PC_ID <= PC_ID;
 			PC_EX <= PC_EX;
 			PC <= PC;
+			PC_start <= PC_start;
 			
 		end
 	end
