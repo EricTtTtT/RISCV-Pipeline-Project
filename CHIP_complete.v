@@ -827,6 +827,7 @@ module RISCV_Pipeline(
 
 		//Icache
 		ICACHE_ren = PC_start? 1'b1:1'b0;
+		//ICACHE_ren = 1'b1;
 		ICACHE_wen = 1'b0;
 		ICACHE_wdata = 0;
 		ICACHE_addr = PC[31:2]; 
@@ -965,18 +966,6 @@ module RISCV_Pipeline(
 		ctrl_lw_stall = (ctrl_memread_EX & (rd_EX==rs1_ID | rd_EX==rs2_ID)) | ctrl_FA_j==2'b01 | ctrl_FB_j==2'b01;	
 	end
 //========= hazard ===========
-
-	reg test,waste;
-	reg [10:0]count, count_nxt;
-	always @(*)begin
-		test = (ctrl_FA_j==2'b01) | (ctrl_FB_j==2'b01);
-		waste = (inst_IF == 32'h00000013) | ctrl_lw_stall | ICACHE_stall | DCACHE_stall;
-		count_nxt = waste? count+1:count;
-	end
-	always @(posedge clk)begin
-		if (!rst_n) count<= 0;
-		else count<=count_nxt;
-	end
 
 //========= seq ===========
 	always @(posedge clk )begin
