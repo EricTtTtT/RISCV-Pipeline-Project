@@ -871,13 +871,14 @@ module RISCV_Pipeline(
 		endcase
 		PC_jalr_ID = imme_ID + PC_FA_j;
 
-		// case(ctrl_FA_j) //in fact, only 01
-		// 	2'b00: compare_rs1 = rs1_data_ID;
-		// 	//2'b01: compare_rs1 = rd_w_EX;
-		// 	2'b10: compare_rs1 = rd_w_MEM;
-		// 	default: compare_rs1 = rs1_data_ID;
-		// endcase
-		compare_rs1 = rd_w_EX;
+		case(ctrl_FA_j) //in fact, only 01
+			2'b00: compare_rs1 = rs1_data_ID;
+			//2'b01: compare_rs1 = rd_w_EX;
+			2'b10: compare_rs1 = rd_w_MEM;
+			default: compare_rs1 = rs1_data_ID;
+		endcase
+		//compare_rs1 = rd_w_EX;
+		
 		// case(ctrl_FB_j) //in fact, usdless
 		// 	2'b00: compare_rs2 = rs2_data_ID;
 		// 	2'b01: compare_rs2 = rd_w_EX;
@@ -957,8 +958,8 @@ module RISCV_Pipeline(
 		end
 
 		//load use hazard
-		ctrl_lw_stall = (ctrl_memread_EX & (rd_EX==rs1_ID | rd_EX==rs2_ID));
-		//ctrl_lw_stall = (ctrl_memread_EX & (rd_EX==rs1_ID | rd_EX==rs2_ID)) | ctrl_FA_j==2'b01;	
+		//ctrl_lw_stall = (ctrl_memread_EX & (rd_EX==rs1_ID | rd_EX==rs2_ID));
+		ctrl_lw_stall = (ctrl_memread_EX & (rd_EX==rs1_ID | rd_EX==rs2_ID)) | ctrl_FA_j==2'b01;	
 	end
 
 	reg test,waste;
