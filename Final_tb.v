@@ -28,7 +28,15 @@
 `ifdef decompression
 	`define IMEM_INIT "I_mem_decompression"
 	`include "./TestBed_compression.v"
-`endif			
+`endif
+`ifdef L2Cache
+	`define IMEM_INIT "I_mem_L2Cache"
+	`include "./TestBed_L2Cache.v"
+`endif	
+`ifdef L2Cache_ref
+	`define IMEM_INIT "I_mem_L2Cache_ref"
+	`include "./TestBed_L2Cache_ref.v"
+`endif
 
 module Final_tb;
 
