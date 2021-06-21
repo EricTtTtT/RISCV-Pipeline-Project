@@ -167,8 +167,6 @@
 	reg [155:0] nxt_cache1 [0:3]; // "1" bit lru, "1" bit valid, "26" bits tags, "128" bits data. =157 bits
 	reg[31:0] data0, data1;
 
-	reg start;
-
 	reg [1:0] state;
 	reg [1:0] nxt_state;
 
@@ -295,21 +293,14 @@
 			end
 			state <= STATE_idle;
 			mem_addr_temp <= 0;
-			start <= 0;
 		end
-		else if (start) begin
+		else begin
 			for (i = 0; i<4; i=i+1)begin
 				cache0[i] <= nxt_cache0[i];
 				cache1[i] <= nxt_cache1[i];
 			end
 			state <= nxt_state;
 			mem_addr_temp <= mem_addr_temp_nxt;
-			start <= start;
-		end
-		else begin
-			state <= state;
-			mem_addr_temp <= mem_addr_temp;
-			start <= 1;
 		end
 	end
 
@@ -365,8 +356,6 @@
 	reg [156:0] nxt_cache0 [0:3]; // "1" bit lru, "1" bit valid, "1"bit dirty, "26" bits tags, "128" bits data. =157 bits
 	reg [156:0] nxt_cache1 [0:3]; // "1" bit lru, "1" bit valid, "1"bit dirty, "26" bits tags, "128" bits data. =157 bits
 	reg [31:0] data0,data1;
-
-	reg start;
 
 	reg [1:0] state;
 	reg [1:0] nxt_state;
@@ -575,23 +564,17 @@
 	always@( posedge clk ) begin
 		if( proc_reset ) begin
 			for (i = 0 ; i < 4 ; i=i+1)begin
-				cache0[i] <=  0;
-				cache1[i] <=  0;
+				cache0[i] <=  { 1'b0 , 1'b1, {155{1'b0}} };
+				cache1[i] <=  { 1'b0 , 1'b1, {155{1'b0}} };
 			end
 			state <= STATE_idle;
-			start <= 0;
 		end
-		else if (start) begin
-			for (i = 0; i<4; i=i+1)begin
+		else begin
+			for (i = 0; i < 4; i=i+1)begin
 				cache0[i] <= nxt_cache0[i];
 				cache1[i] <= nxt_cache1[i];
 			end
 			state <= nxt_state;
-			start <= start;
-		end
-		else begin
-			state <= state;
-			start <= 1;
 		end
 	end
 
@@ -905,7 +888,8 @@ module RISCV_Pipeline(
 		endcase
 		case(ctrl_FB)
 			2'b00: alu_in2_temp = rs2_data_EX;
-			2'b01: alu_in2_temp = rd_w_MEM_real;
+			//2'b01: alu_in2_temp = rd_w_MEM_real;
+			2'b01: alu_in2_temp = rd_w_MEM;
 			2'b10: alu_in2_temp = rd_w_WB;
 			default:alu_in2_temp = rs2_data_EX;
 		endcase
@@ -936,13 +920,13 @@ module RISCV_Pipeline(
 		endcase
 		PC_jalr_ID = imme_ID + PC_FA_j;
 
-		// case(ctrl_FA_j) //in fact, only 01
-		// 	//2'b00: compare_rs1 = rs1_data_ID;
-		// 	2'b01: compare_rs1 = rd_w_EX;
-		// 	//2'b10: compare_rs1 = rd_w_MEM;
-		// 	default: compare_rs1 = rs1_data_ID;
-		// endcase
-		compare_rs1 = rd_w_EX;
+		case(ctrl_FA_j) //in fact, only 01
+			2'b00: compare_rs1 = rs1_data_ID;
+			//2'b01: compare_rs1 = rd_w_EX;
+			2'b10: compare_rs1 = rd_w_MEM;
+			default: compare_rs1 = rs1_data_ID;
+		endcase
+		//compare_rs1 = rd_w_EX;
 		// case(ctrl_FB_j) //in fact, usdless
 		// 	2'b00: compare_rs2 = rs2_data_ID;
 		// 	2'b01: compare_rs2 = rd_w_EX;
@@ -1023,7 +1007,8 @@ module RISCV_Pipeline(
 
 
 		//load use hazard
-		ctrl_lw_stall = (ctrl_memread_EX & (rd_EX==rs1_ID | rd_EX==rs2_ID));
+		//ctrl_lw_stall = (ctrl_memread_EX & (rd_EX==rs1_ID | rd_EX==rs2_ID));
+		ctrl_lw_stall = (ctrl_memread_EX & (rd_EX==rs1_ID | rd_EX==rs2_ID)) | ctrl_FA_j==2'b01;
 	end
 
 
