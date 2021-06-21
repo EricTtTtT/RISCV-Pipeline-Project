@@ -4,6 +4,7 @@
 `timescale 1 ns/10 ps
 
 `define CYCLE 10 // You can modify your clock frequency
+`define ENDCYCLE 1000000
 
 `define DMEM_INIT "D_mem"
 `define SDFFILE   "./CHIP_syn.sdf"	// Modify your SDF file name
@@ -147,7 +148,7 @@ module Final_tb;
 		#(`CYCLE*0.2) rst_n = 1'b0;
 		#(`CYCLE*8.5) rst_n = 1'b1;
      
-		#(`CYCLE*10000) // calculate clock cycles for all operation (you can modify it)
+		#(`CYCLE*`ENDCYCLE) // calculate clock cycles for all operation (you can modify it)
 		$display("============================================================================");
 		$display("\n           Error!!! There is something wrong with your code ...!          ");
 		$display("\n                       The test result is .....FAIL                     \n");
