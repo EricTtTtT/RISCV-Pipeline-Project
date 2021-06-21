@@ -1,24 +1,20 @@
 # RISCV-Pipeline-Project
 
 ## TODO
-1. Critical path
-2. 擋input
-3. L2 cache
-4. BrPred
+1. 擋input
+2. L2 cache
+3. BrPred
 
 ## TO-ASK
-1. Dcache刪除write back部分
-2. Dcache一開始把資料先全給0
-3. 用不到的指令，e.g. >>>
+1. Dcache刪除write back部分, OK
+2. Dcache一開始把資料先全給0, OK
 
-## Usuage 
-Copy content in the files below into CHIP.v, and run ...
-1. $ncverilog Final_tb.v CHIP.v slow_memory.v +define+hasHazard +access+r
-2. $ncverilog Final_tb.v CHIP.v slow_memory.v +define+BrPred +access+r
-3. $ncverilog Final_tb.v CHIP.v slow_memory.v +define+compression +access+r 
+## Note
+waste 710 cycle now
 
 ## BaseLine
   CHIP_hasHazard.v
+  *current design: comb write
   
 ## Extension:
 
@@ -33,5 +29,9 @@ Copy content in the files below into CHIP.v, and run ...
 * L2_cache:
   X
 
-## file discription: 😎
-* 
+
+## Usuage 
+Copy content in the files below into CHIP.v, and run ...
+1. $ncverilog Final_tb.v CHIP.v slow_memory.v +define+hasHazard +access+r
+2. $ncverilog Final_tb.v CHIP.v slow_memory.v +define+BrPred +access+r
+3. $ncverilog Final_tb.v CHIP.v slow_memory.v +define+compression +access+r 
