@@ -14,7 +14,7 @@ waste 710 cycle now
 
 ## BaseLine
   CHIP_hasHazard.v
-  *current design: comb write
+  *current design* : comb write
   
 ## Extension:
 
