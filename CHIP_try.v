@@ -4,7 +4,7 @@ Description:
 Notes:
     TODO:   need to check again
 	FIT TB: modify design for fitting testbench
-	====:   for larger commanc
+	====:   for larger command
 	----:   for smaller command
 =========================================================*/
 // Top module of your design, you cannot modify this module!!
@@ -609,13 +609,14 @@ output reg [31:0] ICACHE_wdata, DCACHE_wdata;
 		reg [1:0] ctrl_FA_j, ctrl_FB_j;
 		reg ctrl_lw_stall;
 		reg ctrl_bj_taken;
-
+	//-------- BranchPrediction -------
+		wire brancheqaul;
 //======== Combinational Circuit ======================
 
 	//======== instruction ============
 		assign inst_IF = (ctrl_bj_taken | ctrl_jalr_ID)?
 							32'h00000013
-						:	{ICACHE_rdata[7:0], ICACHE_rdata[15:8], ICACHE_rdata[23:16], ICACHE_rdata[31:24]};
+						:	{ICACHE_rdata[7:0], ICACHE_rdata[15:8], ICACHE_rdata[23:16], ICACHE_rdata[31:24]};// nop or fetch instruction
 		assign op = inst_ID[6:0];
 		assign rd_ID = inst_ID[11:7];
 		assign rs1_ID = inst_ID[19:15];
@@ -905,7 +906,8 @@ output reg [31:0] ICACHE_wdata, DCACHE_wdata;
             //load use hazard
             ctrl_lw_stall = (ctrl_memread_EX & (rd_EX==rs1_ID | rd_EX==rs2_ID));
         end
-
+	//======== BranchPrediction =======
+		assign brancheqaul = (rs1_data_ID == rs2_data_ID)
 //======== Sequential Circuit =========================
 	always @(posedge clk ) begin
 		if (!rst_n) begin
