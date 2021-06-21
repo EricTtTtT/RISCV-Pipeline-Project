@@ -765,7 +765,7 @@ module RISCV_Pipeline(
 		B_type: begin
 			ctrl_beq_ID = !func3[0];
 			ctrl_bne_ID = func3[0];
-			ctrl_ALUSrc_ID = 0;			
+			ctrl_ALUSrc_ID = 1;			
 			imme_ID = { {20{inst_ID[31]}}, inst_ID[7], inst_ID[30:25], inst_ID[11:8], 1'b0 }; //beq, bne
 		end
 
