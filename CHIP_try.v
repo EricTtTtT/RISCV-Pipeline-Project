@@ -191,10 +191,10 @@ Notes:
 		//==== combinational circuit ==============================
 		reg [27:0] mem_addr_temp_nxt,mem_addr_temp;
 
-		always @(*)begin
+		always @(*) begin
 			case(state)
 				STATE_compare_tag:begin
-					if (miss)begin //clean
+					if (miss) begin //clean
 						nxt_state = STATE_allocate;
 					end
 					else begin
@@ -203,7 +203,7 @@ Notes:
 				end
 
 				STATE_allocate:begin
-					if (mem_ready)begin
+					if (mem_ready) begin
 						nxt_state = STATE_compare_tag;
 					end
 					else begin
@@ -220,9 +220,9 @@ Notes:
 			endcase
 		end
 
-		always @(*)begin
+		always @(*) begin
 			proc_rdata = 0 ;
-			for (i = 0; i<4; i=i+1)begin
+			for (i = 0; i<4; i=i+1) begin
 				nxt_cache0[i] = cache0[i];
 				nxt_cache1[i] = cache1[i];
 			end
@@ -249,11 +249,11 @@ Notes:
 					mem_addr  =  proc_addr[29:2];
 					mem_addr_temp_nxt = (proc_addr[29:2]==mem_addr_temp)? mem_addr_temp : mem_addr;
 
-					if (!miss)begin
-						if (!miss0)begin
+					if (!miss) begin
+						if (!miss0) begin
 							proc_rdata = data0; //hit
 						end
-						else if (!miss1)begin
+						else if (!miss1) begin
 							proc_rdata = data1; //hit
 						end
 					end        
@@ -263,9 +263,9 @@ Notes:
 					proc_stall = 1;
 					mem_addr  = proc_addr[29:2];
 
-					if (mem_ready)begin
+					if (mem_ready) begin
 						mem_read = 0;
-						if (!cache0[proc_addr[3:2]][155])begin
+						if (!cache0[proc_addr[3:2]][155]) begin
 							nxt_cache0[proc_addr[3:2]][127:0] = mem_rdata; //data
 							nxt_cache0[proc_addr[3:2]][153:128] = proc_addr[29:4]; //tags
 							nxt_cache0[proc_addr[3:2]][154] = 1; //valid
@@ -295,7 +295,7 @@ Notes:
 		//==== sequential circuit =================================
 		always@( posedge clk ) begin
 			if( proc_reset ) begin
-				for (i = 0 ; i < 4 ; i=i+1)begin
+				for (i = 0 ; i < 4 ; i=i+1) begin
 					cache0[i] <=  0;
 					cache1[i] <=  0;
 				end
@@ -303,7 +303,7 @@ Notes:
 				mem_addr_temp <= 0;
 			end
 			else begin
-				for (i = 0; i<4; i=i+1)begin
+				for (i = 0; i<4; i=i+1) begin
 					cache0[i] <= nxt_cache0[i];
 					cache1[i] <= nxt_cache1[i];
 				end
@@ -629,7 +629,7 @@ output reg [31:0] ICACHE_wdata, DCACHE_wdata;
 			type[1] = ( (!op[6])&(!op[5])) | (op[6]&op[5]) ;
 			type[0] = op[5] & (!op[4] & !op[2] );
 		end
-		// always @(*)begin
+		// always @(*) begin
 		// 	case (op[6:2])
 		// 		5'b01100: type = 0; //R-type
 		// 		5'b00100: type = 1; //I-type
@@ -644,7 +644,7 @@ output reg [31:0] ICACHE_wdata, DCACHE_wdata;
 
 
 	//======== control unit ===========
-		always @(*)begin
+		always @(*) begin
 			ctrl_jal_ID = 0;
 			ctrl_jalr_ID = 0;
 			ctrl_beq_ID = 0;
@@ -703,7 +703,7 @@ output reg [31:0] ICACHE_wdata, DCACHE_wdata;
         end
 
 	//======== imm generator ==========
-		always @(*)begin
+		always @(*) begin
 			case (type)
 				I_type: begin
 					imme_ID = { {21{inst_ID[31]}}, inst_ID[30:20]};	// FIT TB
@@ -734,8 +734,8 @@ output reg [31:0] ICACHE_wdata, DCACHE_wdata;
 			alu_ctrl_ID[0] = (func7[5] & func3[2] & !func3[1] & func3[0]) | (func3[2]&func3[1]) | (func7[5] & !func3[2]  & op[5] );
 			alu_ctrl_ID[0] = ( (func7[5] & !func3[1]) & ((func3[2]&func3[0]) | op[5]) )  | (func3[2]&func3[1]);
 		end
-		// always @(*)begin
-		// 	if (op[6:2]==5'b00100)begin//I-type
+		// always @(*) begin
+		// 	if (op[6:2]==5'b00100) begin//I-type
 		// 		if (func3==3'b101) alu_ctrl_ID = func7[5]? 4'd8:4'd7; //srai, srli
 		// 		else if (func3==3'b001) alu_ctrl_ID = 4'd6; //slli
 		// 		else if (func3==3'b010) alu_ctrl_ID = 4'd5; //slti
@@ -744,14 +744,14 @@ output reg [31:0] ICACHE_wdata, DCACHE_wdata;
 		// 		else if (func3==3'b111) alu_ctrl_ID = 4'd2; //andi
 		// 		else alu_ctrl_ID = 4'd0; //addi
 		// 	end
-		// 	else if (op[6:2]==5'b01100)begin //R-type
+		// 	else if (op[6:2]==5'b01100) begin //R-type
 		// 		if (func3==3'b000) alu_ctrl_ID = func7[5]? 4'd1:4'd0; //sub, add
 		// 		else if (func3==3'b111) alu_ctrl_ID = 4'd2; //and
 		// 		else if (func3==3'b110) alu_ctrl_ID = 4'd3; //or
 		// 		else if (func3==3'b100) alu_ctrl_ID = 4'd4; //xor
 		// 		else alu_ctrl_ID = 4'd5; //slt
 		// 	end
-		// 	else if (op==7'b1100011)begin //beq, bne
+		// 	else if (op==7'b1100011) begin //beq, bne
 		// 		alu_ctrl_ID = 4'd1;
 		// 	end
 		// 	else begin //jal, sw
@@ -760,7 +760,7 @@ output reg [31:0] ICACHE_wdata, DCACHE_wdata;
 		// end
 
 	//======== CACHE ==================
-        always @(*)begin
+        always @(*) begin
             //-------- D cache ------------
                 DCACHE_ren = ctrl_memread_MEM;
                 DCACHE_addr = alu_out_MEM[31:2]; 
@@ -788,7 +788,7 @@ output reg [31:0] ICACHE_wdata, DCACHE_wdata;
         end
 
     //======== ALU ====================
-        always @(*)begin
+        always @(*) begin
             //alu
             case(ctrl_FA)
                 2'b00: alu_in1 = rs1_data_EX;
@@ -855,24 +855,24 @@ output reg [31:0] ICACHE_wdata, DCACHE_wdata;
 
 
 	//======== Hazard =================
-        always @(*)begin
-            //Forwding
-            //rs1 at ID, for jalr
-            if ( (ctrl_jalr_ID|ctrl_beq_ID|ctrl_bne_ID) & ctrl_regwrite_EX & rd_EX!=0 & rd_EX==rs1_ID)begin //EX
+        always @(*) begin
+            // Forwding
+            // rs1 at ID, for jalr
+            if ( (ctrl_jalr_ID|ctrl_beq_ID|ctrl_bne_ID) & ctrl_regwrite_EX & rd_EX!=0 & rd_EX==rs1_ID) begin //EX
                 ctrl_FA_j = 2'b01; 
             end
-            else if ( (ctrl_jalr_ID|ctrl_beq_ID|ctrl_bne_ID) & ctrl_regwrite_MEM & rd_MEM!=0 & rd_MEM==rs1_ID)begin //MEM
+            else if ( (ctrl_jalr_ID|ctrl_beq_ID|ctrl_bne_ID) & ctrl_regwrite_MEM & rd_MEM!=0 & rd_MEM==rs1_ID) begin //MEM
                 ctrl_FA_j = 2'b10; 
             end
             else begin
                 ctrl_FA_j = 2'b00;
             end
 
-            //rs2 at ID, for jalr
-            // if ( (ctrl_beq_ID|ctrl_bne_ID) & ctrl_regwrite_EX & rd_EX!=0 & rd_EX==rs2_ID)begin //EX
+            // rs2 at ID, for jalr
+            // if ( (ctrl_beq_ID|ctrl_bne_ID) & ctrl_regwrite_EX & rd_EX!=0 & rd_EX==rs2_ID) begin //EX
             // 	ctrl_FB_j = 2'b01;  
             // end
-            // else if ( (ctrl_beq_ID|ctrl_bne_ID) & ctrl_regwrite_MEM & rd_MEM!=0 & rd_MEM==rs2_ID)begin //MEM
+            // else if ( (ctrl_beq_ID|ctrl_bne_ID) & ctrl_regwrite_MEM & rd_MEM!=0 & rd_MEM==rs2_ID) begin //MEM
             // 	ctrl_FB_j = 2'b10;  
             // end
             // else begin
@@ -880,10 +880,10 @@ output reg [31:0] ICACHE_wdata, DCACHE_wdata;
             // end
 
             //(rs1 at EX)
-            if (ctrl_regwrite_MEM & rd_MEM!=0 & rd_MEM==rs1_EX)begin
+            if (ctrl_regwrite_MEM & rd_MEM!=0 & rd_MEM==rs1_EX) begin
                 ctrl_FA = 2'b01; 
             end
-            else if (ctrl_regwrite_WB & rd_WB!=0 & rd_WB==rs1_EX)begin
+            else if (ctrl_regwrite_WB & rd_WB!=0 & rd_WB==rs1_EX) begin
                 ctrl_FA = 2'b10; 
             end
             else begin
@@ -891,10 +891,10 @@ output reg [31:0] ICACHE_wdata, DCACHE_wdata;
             end
 
             //(rs2 at EX)
-            if (ctrl_regwrite_MEM & rd_MEM!=0 & rd_MEM==rs2_EX)begin //& type_EX!=3'd1 if I-type，no need of rs2
+            if (ctrl_regwrite_MEM & rd_MEM!=0 & rd_MEM==rs2_EX) begin //& type_EX!=3'd1 if I-type，no need of rs2
                 ctrl_FB = 2'b01;
             end
-            else if (ctrl_regwrite_WB & rd_WB!=0 & rd_WB==rs2_EX)begin
+            else if (ctrl_regwrite_WB & rd_WB!=0 & rd_WB==rs2_EX) begin
                 ctrl_FB = 2'b10;
             end
             else begin
@@ -907,9 +907,9 @@ output reg [31:0] ICACHE_wdata, DCACHE_wdata;
         end
 
 //======== Sequential Circuit =========================
-	always @(posedge clk )begin
-		if (!rst_n)begin
-			for (i = 0 ; i<32; i=i+1)begin
+	always @(posedge clk ) begin
+		if (!rst_n) begin
+			for (i = 0 ; i<32; i=i+1) begin
 				register[i] <= 0 ;
 			end
 			imme_EX <= 0 ;
