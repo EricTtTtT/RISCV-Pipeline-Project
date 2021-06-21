@@ -598,15 +598,17 @@ module RISCV_Pipeline(
 //==== input/output definition ============================
 
 	integer i;
-	//========= PC =========
+//========= PC =========
 	reg [31:0] PC;
 	reg [31:0] PC_nxt;
 	reg [31:0] PC_ID, PC_EX;
 	reg [31:0] PC_B_ID, PC_jalr_ID;
 	reg [31:0] PC_FA_j;
 	reg PC_start;
+//========= PC =========
 
-	//========= Registers ========= 
+
+//========= Registers ========= 
 	reg [31:0] register [0:31];
 	reg [31:0] register_save [0:31];
 	reg [31:0] register_save_nxt [0:31];
@@ -634,19 +636,23 @@ module RISCV_Pipeline(
 
 	reg [31:0] compare_rs1;
 	reg [31:0] compare_rs2;
+//========= Registers ========= 
 
-	//========= Instruction ========= 
+//========= Instruction ========= 
 	wire [31:0] inst_IF;
 	reg [31:0] inst_ID;
 	wire [6:0] op;
 	wire [2:0] func3;
 	wire [6:0] func7;
+//========= Instruction ========= 
 
-	//========= Immediate =========
+
+//========= Immediate =========
 	reg [31:0] imme_ID;
 	reg [31:0] imme_EX;
+//========= Immediate =========
 
-	//========= alu ========= 
+//========= alu ========= 
 	reg signed [31:0] alu_in1;
 	reg signed [31:0] alu_in2;
 	reg signed [31:0] alu_in2_temp;
@@ -655,15 +661,18 @@ module RISCV_Pipeline(
 	reg signed [31:0] alu_out_WB;
 	reg [3:0]	alu_ctrl_ID;
 	reg [3:0]	alu_ctrl_EX;
+//========= alu ========= 
 
-	//========= memory ========= 
+
+//========= memory ========= 
 	reg [31:0] read_data_MEM; //read from mem
 	reg [31:0] read_data_WB; 
 
 	reg [31:0] wdata_EX; //write mem
 	reg [31:0] wdata_MEM;
+//========= memory ========= 
 
-	//========= Control unit =========
+//========= Control unit =========
 	reg ctrl_jalr_ID,		ctrl_jalr_EX; 	//PC+4 at EX
 	reg ctrl_jal_ID,		ctrl_jal_EX; 	//
 	reg ctrl_beq_ID;	//beq 
@@ -680,16 +689,19 @@ module RISCV_Pipeline(
 	reg ctrl_lw_stall;
 
 	reg ctrl_bj_taken;
+//========= Control unit =========
 
-	//========= wire & reg ==============
+
+//========= wire & reg ==============
 	reg	[2:0]	type;
 	parameter R_type = 3'd0;
 	parameter I_type = 3'd2;
 	parameter S_type = 3'd1;
 	parameter B_type = 3'd3;
 	parameter J_type = 3'd6;
+//========= wire & reg ==============
 
-	//========= Wire assignment ==========
+//========= Wire assignment ==========
 	//assign inst_IF = (ctrl_bj_taken|ctrl_jalr_ID)? 32'h00000013:{ICACHE_rdata[7:0],ICACHE_rdata[15:8],ICACHE_rdata[23:16],ICACHE_rdata[31:24]};
 	assign inst_IF = !PC_start? 32'h00000013 : ctrl_bj_taken? 32'h00000013:ctrl_jalr_ID?32'h00000013:{ICACHE_rdata[7:0],ICACHE_rdata[15:8],ICACHE_rdata[23:16],ICACHE_rdata[31:24]};
 
@@ -702,34 +714,18 @@ module RISCV_Pipeline(
 
 	assign rs1_data_ID = register[rs1_ID];
 	assign rs2_data_ID = register[rs2_ID];
+//========= Wire assignment ==========
 
-	//========== type =============
-	// always @(*)begin
-	// 	if (!op[6]&op[5]&op[4]&!op[3]&!op[2]) type = 0;
-	// 	else if (!op[6]&!op[5]&op[4]&!op[3]&!op[2]) type = 1;
-	// 	else if (!op[6]&!op[5]&!op[4]&!op[3]&!op[2]) type = 1;
-	// 	else if (op[6]&op[5]&!op[4]&!op[3]&op[2]) type = 1;
-	// 	else if (!op[6]&op[5]&!op[4]&!op[3]&!op[2]) type = 2;
-	// 	else if (op[6]&op[5]&!op[4]&!op[3]&!op[2]) type = 3;
-	// 	else if (op[6]&op[5]&!op[4]&op[3]&op[2]) type = 4;
-	// 	else type = 5;
-	// 	// case (op[6:2])
-	// 	// 	5'b01100: type = 0; //R-type
-	// 	// 	5'b00100: type = 1; //I-type
-	// 	// 	5'b00000: type = 1; //I-type, lw
-	// 	// 	5'b11001: type = 1; //I-type, jalr
-	// 	// 	5'b01000: type = 2; //S, sw
-	// 	// 	5'b11000: type = 3; //B, beq
-	// 	// 	5'b11011: type = 4; //jal
-	// 	// 	default: type=5;
-	// 	// endcase
-	// end
+
+//========== type =============
 	always @(*)begin
 		type[2] = op[3];
 		type[1] = ( (!op[6])&(!op[5])) | (op[6]&op[5]) ;
 		type[0] = op[5] & (!op[4] & !op[2] );
 	end
+//========== type =============
 
+//========== decode =============
 	always @(*)begin
 		//default
 		imme_ID = 0;
@@ -793,8 +789,10 @@ module RISCV_Pipeline(
 		end
 		endcase
 	end
+//========== decode =============
 
-	//======== alu_ctrl ========
+
+//======== alu_ctrl ========
 	always @(*)begin
 		alu_ctrl_ID[3] = !func3[1] & func3[0];
 		alu_ctrl_ID[2] = (func3[2] & func3[0]) | (!func3[2] & func3[1] & op[4]);
@@ -802,8 +800,10 @@ module RISCV_Pipeline(
 		alu_ctrl_ID[0] = (func7[5] & func3[2] & !func3[1] & func3[0]) | (func3[2]&func3[1]) | (func7[5] & !func3[2]  & op[5] );
 		alu_ctrl_ID[0] = ( (func7[5] & !func3[1]) & ((func3[2]&func3[0]) | op[5]) )  | (func3[2]&func3[1]);
 	end
+//======== alu_ctrl ========
 
-	//======== mux & comb ckt ========
+
+//======== mux & comb ckt ========
 	always @(*)begin
 
 		//Dmem_read		(wen, addr, data)
@@ -895,8 +895,9 @@ module RISCV_Pipeline(
 		//PC_nxt = ctrl_jalr_ID? PC_jalr_ID : ctrl_bj_taken? PC_B_ID : PC+4; //rs1+imme or pc+imme or pc+4;
 		PC_nxt = ctrl_bj_taken? PC_B_ID : ctrl_jalr_ID? PC_jalr_ID : PC+4;
 	end
+//======== mux & comb ckt ========
 
-	//comb write register
+//comb write register
 	always @(*)begin
 		write_rd_WB =  ctrl_memtoreg_WB? read_data_WB : rd_w_WB;
 		register[0] = 0;
@@ -909,8 +910,9 @@ module RISCV_Pipeline(
 			register_save_nxt[i] = register[i];
 		end
 	end
+//comb write register
 
-	//========= hazard ===========
+//========= hazard ===========
 	always @(*)begin
 		//Forwding
 		//rs1 at ID, for jalr
@@ -961,7 +963,9 @@ module RISCV_Pipeline(
 		//ctrl_lw_stall = (ctrl_memread_EX & (rd_EX==rs1_ID | rd_EX==rs2_ID));
 		ctrl_lw_stall = (ctrl_memread_EX & (rd_EX==rs1_ID | rd_EX==rs2_ID)) | ctrl_FA_j==2'b01;	
 	end
+//========= hazard ===========
 
+//========= seq ===========
 	always @(posedge clk )begin
 		if (!rst_n)begin
 			// for (i = 0 ; i<32; i=i+1)begin
@@ -1148,4 +1152,7 @@ module RISCV_Pipeline(
 	end
 
 endmodule
+//========= seq ===========
+
+
 //=========== CHIP =================
