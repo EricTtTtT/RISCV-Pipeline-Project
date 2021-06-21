@@ -14,7 +14,8 @@ waste 710 cycle now
 
 ## BaseLine
   CHIP_hasHazard.v
-  *current design* : comb write
+  
+  `current design: combination write register`
   
 ## Extension:
 
