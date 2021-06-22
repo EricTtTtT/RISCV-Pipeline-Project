@@ -797,7 +797,6 @@ module RISCV_Pipeline(
 		alu_ctrl_ID[3] = !func3[1] & func3[0];
 		alu_ctrl_ID[2] = (func3[2] & func3[0]) | (!func3[2] & func3[1] & op[4]);
 		alu_ctrl_ID[1] = func3[2];
-		alu_ctrl_ID[0] = (func7[5] & func3[2] & !func3[1] & func3[0]) | (func3[2]&func3[1]) | (func7[5] & !func3[2]  & op[5] );
 		alu_ctrl_ID[0] = ( (func7[5] & !func3[1]) & ((func3[2]&func3[0]) | op[5]) )  | (func3[2]&func3[1]);
 	end
 //======== alu_ctrl ========
@@ -892,7 +891,9 @@ module RISCV_Pipeline(
 		//PC_nxt, branch,jal or jalr or pc+4
 		PC_B_ID = PC_ID + imme_ID;
 
-		ctrl_bj_taken = ( ((ctrl_beq_ID & compare_rs1==compare_rs2) | ctrl_bne_ID & (compare_rs1!=compare_rs2)) | ctrl_jal_ID);
+		//ctrl_bj_taken = ( ((ctrl_beq_ID & compare_rs1==compare_rs2) | ctrl_bne_ID & (compare_rs1!=compare_rs2)) | ctrl_jal_ID);
+		ctrl_bj_taken = !ctrl_lw_stall & ( ((ctrl_beq_ID & compare_rs1==compare_rs2) | ctrl_bne_ID & (compare_rs1!=compare_rs2)) | ctrl_jal_ID);
+
 
 		//PC_nxt = ctrl_jalr_ID? PC_jalr_ID : ctrl_bj_taken? PC_B_ID : PC+4; //rs1+imme or pc+imme or pc+4;
 		PC_nxt = ctrl_bj_taken? PC_B_ID : ctrl_jalr_ID? PC_jalr_ID : PC+4;
@@ -1070,7 +1071,6 @@ module RISCV_Pipeline(
 			//alu
 			alu_out_MEM <= alu_out_EX;
 			alu_out_WB <= alu_out_MEM;
-
 			alu_ctrl_EX <= (!ctrl_lw_stall)? alu_ctrl_ID : 0;
 
 			//register
