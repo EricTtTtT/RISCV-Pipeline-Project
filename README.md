@@ -2,6 +2,15 @@
 
 ## Extension 用 complete.v來修
 
+## BrPred
+共三段branch
+a. all not taken
+b. not taken, taken, not taken, taken....
+c. all taken
+
+1. BrPred.v: 即為complete.v，當作對照組，run time剛好跟predictor一樣。
+2. 2bits_predictor.v: 初始直為not taken, 因此a.全對。b.因為在not taken和taken之間跳動，所以全錯。c.前面錯三個，後面全對。
+3. 2bits_counter.v: a.全對，b.兩個跳會錯其中一個，c.前面錯三個，後面全對。
 
 
 
