@@ -12,24 +12,19 @@ c. all taken
 2. 2bits_predictor.v: 初始直為not taken, 因此a.全對。b.因為在not taken和taken之間跳動，所以全錯。c.前面錯三個，後面全對。
 3. 2bits_counter.v: a.全對，b.兩個跳會錯其中一個，c.前面錯三個，後面全對。
 
-
+## Note
+waste 710 cycle now
+ctrl_bj_taken 應該要多加!ctrl_lw_stall才對，可以過的話就沒差
 
 ## TODO
-1. 擋input
-2. L2 cache
-3. BrPred
+1. 擋input？ L2有問題
 
 ## TO-ASK
 1. Dcache刪除write back部分, OK
 2. Dcache一開始把資料先全給0, OK
 
-## Note
-waste 710 cycle now
-
 ## BaseLine
   CHIP_hasHazard.v
-  
-  `current design: combination write register`
   
 ## Extension:
 
