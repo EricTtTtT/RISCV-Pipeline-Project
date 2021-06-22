@@ -29,11 +29,12 @@ output reg [127:0]	mem_wdata;
     
     parameter NUM_BLOCKS = 4;
 	parameter BLOCK_ADDR_SIZE = 2;  // log2 NUM_BLOCKS
+    parameter BLOCK_SIZE = 128;
 
 	// block = [cache1, cache2]
 	// cache = [word0, word1, word2, word3] 
 	parameter TAG_SIZE = 28-BLOCK_ADDR_SIZE;  // 30 - 2 - BLOCK_ADDR_SIZE
-    parameter BLOCK_hSIZE = 130+TAG_SIZE;  // 1+1+TAG_SIZE+128
+    parameter BLOCK_TOTAL = 1 + 1 + BLOCK_SIZE + TAG_SIZE;
     parameter IDLE = 2'd0;
     parameter COMP = 2'd1;
     parameter WRITE = 2'd2;
@@ -46,14 +47,14 @@ output reg [127:0]	mem_wdata;
     wire hit;
     wire [BLOCK_ADDR_SIZE-1:0] block_addr;
     wire [TAG_SIZE-1:0] tag;
-	wire [BLOCK_hSIZE-1:0] cache1_select, cache2_select;
+	wire [BLOCK_TOTAL-1:0] cache1_select, cache2_select;
 
     // flip flops
     reg [1:0] state, state_next;
-    reg [BLOCK_hSIZE-1:0] cache1 [0:NUM_BLOCKS-1];
-    reg [BLOCK_hSIZE-1:0] cache1_next [0:NUM_BLOCKS-1];
-    reg [BLOCK_hSIZE-1:0] cache2 [0:NUM_BLOCKS-1];
-    reg [BLOCK_hSIZE-1:0] cache2_next [0:NUM_BLOCKS-1];
+    reg [BLOCK_TOTAL-1:0] cache1 [0:NUM_BLOCKS-1];
+    reg [BLOCK_TOTAL-1:0] cache1_next [0:NUM_BLOCKS-1];
+    reg [BLOCK_TOTAL-1:0] cache2 [0:NUM_BLOCKS-1];
+    reg [BLOCK_TOTAL-1:0] cache2_next [0:NUM_BLOCKS-1];
     reg [NUM_BLOCKS-1:0] lru, lru_next;  // low --> last used is cache 2, use cache1 first
 	reg mem_ready_ff;
 	reg [127:0] mem_rdata_ff;
@@ -83,10 +84,10 @@ output reg [127:0]	mem_wdata;
 	assign cache1_select = cache1[block_addr];
 	assign cache2_select = cache2[block_addr];
 	
-    assign valid1 = cache1_select[BLOCK_hSIZE-1];
-    assign dirty1 = cache1_select[BLOCK_hSIZE-2];
-    assign valid2 = cache2_select[BLOCK_hSIZE-1];
-    assign dirty2 = cache2_select[BLOCK_hSIZE-2];
+    assign valid1 = cache1_select[BLOCK_TOTAL-1];
+    assign dirty1 = cache1_select[BLOCK_TOTAL-2];
+    assign valid2 = cache2_select[BLOCK_TOTAL-1];
+    assign dirty2 = cache2_select[BLOCK_TOTAL-2];
     assign hit1 = valid1 & (cache1_select[127+TAG_SIZE : 128] == tag);
     assign hit2 = valid2 & (cache2_select[127+TAG_SIZE : 128] == tag);
     assign hit = hit1 | hit2;
@@ -141,11 +142,11 @@ output reg [127:0]	mem_wdata;
 					endcase
 					if (hit1) begin     // TODO: how to write in if else?
 						cache1_next[block_addr][127+TAG_SIZE : 128] = tag;
-                    	cache1_next[block_addr][BLOCK_hSIZE-1 : BLOCK_hSIZE-2] = 2'b11;
+                    	cache1_next[block_addr][BLOCK_TOTAL-1 : BLOCK_TOTAL-2] = 2'b11;
 					end
 					if (hit2) begin
 						cache2_next[block_addr][127+TAG_SIZE : 128] = tag;
-                    	cache2_next[block_addr][BLOCK_hSIZE-1 : BLOCK_hSIZE-2] = 2'b11;
+                    	cache2_next[block_addr][BLOCK_TOTAL-1 : BLOCK_TOTAL-2] = 2'b11;
 					end
 				end else begin
 					cache1_next[block_addr] = cache1_select;
@@ -155,9 +156,9 @@ output reg [127:0]	mem_wdata;
             WRITE: begin
                 if (mem_ready_ff) begin
                     if (lru[block_addr]) begin
-                        cache2_next[block_addr][BLOCK_hSIZE-1 : BLOCK_hSIZE-2] = 2'b10;
+                        cache2_next[block_addr][BLOCK_TOTAL-1 : BLOCK_TOTAL-2] = 2'b10;
                     end else begin
-                        cache1_next[block_addr][BLOCK_hSIZE-1 : BLOCK_hSIZE-2] = 2'b10;
+                        cache1_next[block_addr][BLOCK_TOTAL-1 : BLOCK_TOTAL-2] = 2'b10;
                     end
                 end
             end
@@ -166,20 +167,20 @@ output reg [127:0]	mem_wdata;
                     if (lru[block_addr]) begin
                         cache2_next[block_addr][127:0] = mem_rdata_ff;
                         cache2_next[block_addr][127+TAG_SIZE : 128] = tag;
-                        cache2_next[block_addr][BLOCK_hSIZE-1 : BLOCK_hSIZE-2] = 2'b10;
+                        cache2_next[block_addr][BLOCK_TOTAL-1 : BLOCK_TOTAL-2] = 2'b10;
                     end else begin
                         cache1_next[block_addr][127:0] = mem_rdata_ff;
                         cache1_next[block_addr][127+TAG_SIZE : 128] = tag;
-                        cache1_next[block_addr][BLOCK_hSIZE-1 : BLOCK_hSIZE-2] = 2'b10;
+                        cache1_next[block_addr][BLOCK_TOTAL-1 : BLOCK_TOTAL-2] = 2'b10;
                     end
                 end else if (!dirty1) begin
                     cache1_next[block_addr][127:0] = mem_rdata_ff;
                     cache1_next[block_addr][127+TAG_SIZE : 128] = tag;
-                    cache1_next[block_addr][BLOCK_hSIZE-1 : BLOCK_hSIZE-2] = 2'b10;
+                    cache1_next[block_addr][BLOCK_TOTAL-1 : BLOCK_TOTAL-2] = 2'b10;
                 end else begin
                     cache2_next[block_addr][127:0] = mem_rdata_ff;
                     cache2_next[block_addr][127+TAG_SIZE : 128] = tag;
-                    cache2_next[block_addr][BLOCK_hSIZE-1 : BLOCK_hSIZE-2] = 2'b10;   
+                    cache2_next[block_addr][BLOCK_TOTAL-1 : BLOCK_TOTAL-2] = 2'b10;   
                 end
             end
         endcase
@@ -189,13 +190,13 @@ output reg [127:0]	mem_wdata;
     always@( posedge clk ) begin
         if( proc_reset ) begin
             for (i=0; i<NUM_BLOCKS; i=i+1) begin
-                cache1[i] <= 0;
-                cache2[i] <= 0;
-                lru[i] <= 0;
+                cache1[i] <= {BLOCK_TOTAL{1'b0}};
+                cache2[i] <= {BLOCK_TOTAL{1'b0}};
+                lru[i] <= 1'b0;
             end
             state <= IDLE;
 			mem_ready_ff <= 1'b0;
-			mem_rdata_ff <= 127'd0;
+			mem_rdata_ff <= {BLOCK_SIZE{1'b0}};
         end else begin
             for (i=0; i<NUM_BLOCKS; i=i+1) begin
                 cache1[i] <= cache1_next[i];
@@ -232,30 +233,31 @@ output reg [127:0]	mem_wdata;
     
     parameter NUM_BLOCKS = 4;
 	parameter BLOCK_ADDR_SIZE = 2;  // log2 NUM_BLOCKS
+    parameter BLOCK_SIZE = 128;
 
 	// block = [cache1, cache2]
 	// cache = [word0, word1, word2, word3] 
-	parameter TAG_SIZE = 28-BLOCK_ADDR_SIZE;  // 30 - 2 - BLOCK_ADDR_SIZE
-    parameter BLOCK_hSIZE = 130+TAG_SIZE;  // 1+1+TAG_SIZE+128
+	parameter TAG_SIZE = 28 - BLOCK_ADDR_SIZE;  // 30 - 2 - BLOCK_ADDR_SIZE
+    parameter BLOCK_TOTAL = 1 + TAG_SIZE + BLOCK_SIZE;
     parameter IDLE = 2'd0;
     parameter COMP = 2'd1;
     parameter ALLOC = 2'd3;
     integer i;
 
     //---- wire/reg definition ----------------------------
-    wire valid1, dirty1, hit1;
-    wire valid2, dirty2, hit2;
+    wire valid1, hit1;
+    wire valid2, hit2;
     wire hit;
     wire [BLOCK_ADDR_SIZE-1:0] block_addr;
     wire [TAG_SIZE-1:0] tag;
-	wire [BLOCK_hSIZE-1:0] cache1_select, cache2_select;
+	wire [BLOCK_TOTAL-1:0] cache1_select, cache2_select;
 
     // flip flops
     reg [1:0] state, state_next;
-    reg [BLOCK_hSIZE-1:0] cache1 [0:NUM_BLOCKS-1];
-    reg [BLOCK_hSIZE-1:0] cache1_next [0:NUM_BLOCKS-1];
-    reg [BLOCK_hSIZE-1:0] cache2 [0:NUM_BLOCKS-1];
-    reg [BLOCK_hSIZE-1:0] cache2_next [0:NUM_BLOCKS-1];
+    reg [BLOCK_TOTAL-1:0] cache1 [0:NUM_BLOCKS-1];
+    reg [BLOCK_TOTAL-1:0] cache1_next [0:NUM_BLOCKS-1];
+    reg [BLOCK_TOTAL-1:0] cache2 [0:NUM_BLOCKS-1];
+    reg [BLOCK_TOTAL-1:0] cache2_next [0:NUM_BLOCKS-1];
     reg [NUM_BLOCKS-1:0] lru, lru_next;  // low --> last used is cache 2, use cache1 first
 	reg mem_ready_ff;
 	reg [127:0] mem_rdata_ff;
@@ -282,17 +284,17 @@ output reg [127:0]	mem_wdata;
 	assign cache1_select = cache1[block_addr];
 	assign cache2_select = cache2[block_addr];
 	
-    assign valid1 = cache1_select[BLOCK_hSIZE-1];
-    assign dirty1 = cache1_select[BLOCK_hSIZE-2];
-    assign valid2 = cache2_select[BLOCK_hSIZE-1];
-    assign dirty2 = cache2_select[BLOCK_hSIZE-2];
-    assign hit1 = valid1 & (cache1_select[127+TAG_SIZE : 128] == tag);
-    assign hit2 = valid2 & (cache2_select[127+TAG_SIZE : 128] == tag);
+    assign valid1 = cache1_select[BLOCK_TOTAL-1];
+    assign dirty1 = cache1_select[BLOCK_TOTAL-2];
+    assign valid2 = cache2_select[BLOCK_TOTAL-1];
+    assign dirty2 = cache2_select[BLOCK_TOTAL-2];
+    assign hit1 = valid1 & (cache1_select[BLOCK_SIZE+TAG_SIZE-1 : BLOCK_SIZE] == tag);
+    assign hit2 = valid2 & (cache2_select[BLOCK_SIZE+TAG_SIZE-1 : BLOCK_SIZE] == tag);
     assign hit = hit1 | hit2;
     
 	//---- I/O signals ------------------------------------
 	always @(*) begin
-    	proc_stall = ((state==COMP & hit) | !proc_read) ? 0 : 1;
+    	proc_stall = ((state==COMP & hit) | !proc_read) ? 1'b0 : 1'b1;
 		case ({hit1, hit2, proc_addr[1:0]})
 			4'b1000: proc_rdata = cache1_select[31:0];
 			4'b1001: proc_rdata = cache1_select[63:32];
@@ -305,9 +307,9 @@ output reg [127:0]	mem_wdata;
 			default: proc_rdata = 32'd0;
 		endcase
     	mem_read = ~mem_ready_ff && state==ALLOC;
-    	mem_write = 0;
+    	mem_write = 1'b0;
 		mem_addr = proc_addr[29:2];
-        mem_wdata = 0;
+        mem_wdata = {BLOCK_SIZE{1'b0}};
 	end
 
 	//---- handle cache_next and lru bits -----------------
@@ -321,27 +323,16 @@ output reg [127:0]	mem_wdata;
                                     hit1? 1 : hit2? 0 : lru[block_addr]
                                 : lru[block_addr];
 
-        case({state, dirty1, dirty2})  // ALLOC = 2'd3
-            4'b1100: begin
-                if (lru[block_addr]) begin
-                    cache2_next[block_addr][127:0] = mem_rdata;
-                    cache2_next[block_addr][127+TAG_SIZE : 128] = tag;
-                    cache2_next[block_addr][BLOCK_hSIZE-1 : BLOCK_hSIZE-2] = 2'b10;
-                end else begin
-                    cache1_next[block_addr][127:0] = mem_rdata;
-                    cache1_next[block_addr][127+TAG_SIZE : 128] = tag;
-                    cache1_next[block_addr][BLOCK_hSIZE-1 : BLOCK_hSIZE-2] = 2'b10;
-                end
-            end
-            4'b1101: begin
+        case({state, lru[block_addr]})  // ALLOC = 2'b11
+            3'b110: begin
                 cache1_next[block_addr][127:0] = mem_rdata;
-                cache1_next[block_addr][127+TAG_SIZE : 128] = tag;
-                cache1_next[block_addr][BLOCK_hSIZE-1 : BLOCK_hSIZE-2] = 2'b10;
+                cache1_next[block_addr][BLOCK_SIZE+TAG_SIZE-1 : BLOCK_SIZE] = tag;
+                cache1_next[block_addr][BLOCK_TOTAL-1 : BLOCK_TOTAL-2] = 1'b1;
             end
-            4'b1110: begin
+            3'b111: begin
                 cache2_next[block_addr][127:0] = mem_rdata;
-                cache2_next[block_addr][127+TAG_SIZE : 128] = tag;
-                cache2_next[block_addr][BLOCK_hSIZE-1 : BLOCK_hSIZE-2] = 2'b10;   
+                cache2_next[block_addr][BLOCK_SIZE+TAG_SIZE-1 : BLOCK_SIZE] = tag;
+                cache2_next[block_addr][BLOCK_TOTAL-1 : BLOCK_TOTAL-2] = 1'b1;
             end
 			default: begin
 				cache1_next[block_addr] = cache1_select;
@@ -354,13 +345,13 @@ output reg [127:0]	mem_wdata;
     always@( posedge clk ) begin
         if( proc_reset ) begin
             for (i=0; i<NUM_BLOCKS; i=i+1) begin
-                cache1[i] <= 0;
-                cache2[i] <= 0;
-                lru[i] <= 0;
+                cache1[i] <= {BLOCK_TOTAL{1'b0}};
+                cache2[i] <= {BLOCK_TOTAL{1'b0}};
+                lru[i] <= 1'b0;
             end
             state <= IDLE;
 			mem_ready_ff <= 1'b0;
-			mem_rdata_ff <= 127'd0;
+			mem_rdata_ff <= {BLOCK_SIZE{1'b0}};
         end else begin
             for (i=0; i<NUM_BLOCKS; i=i+1) begin
                 cache1[i] <= cache1_next[i];

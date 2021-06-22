@@ -50,6 +50,7 @@ assert(nb >= 3)
 assert(nb <= 48)
 assert(incre >= 0)
 assert(nb*incre < 1024)
+assert(nb*(incre+1)*2+1 < 1024)
 
 fib_list  = fib(nb)
 incre_list = increment(incre, fib_list)
