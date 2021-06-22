@@ -3,10 +3,14 @@
 ## Extension 用 complete.v來修
 
 ## BrPred
-共三段branch
-a. all not taken
-b. not taken, taken, not taken, taken....
-c. all taken
+共三段branch. 
+
+a. all not taken. 
+
+b. not taken, taken, not taken, taken...  
+
+c. all taken. 
+
 
 1. BrPred.v: 即為complete.v（all not taken），當作對照組。
     * a.全對，b.兩個跳錯一個，c.全錯。
