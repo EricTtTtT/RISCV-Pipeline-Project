@@ -14,7 +14,6 @@ c. all taken
 
 ## Note
 waste 710 cycle now
-ctrl_bj_taken 應該要多加!ctrl_lw_stall才對，可以過的話就沒差
 
 ## TODO
 1. 擋input？ L2有問題
