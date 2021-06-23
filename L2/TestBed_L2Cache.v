@@ -2,7 +2,7 @@
 `define TestPort    30'h3FF      // 1023
 `define BeginSymbol 32'h00000168
 `define EndSymbol   32'hFFFFFD5D
-`define CheckNum    10'd121
+`define CheckNum    10'd31
 
 module	TestBed(
 	clk,
@@ -161,111 +161,21 @@ module	TestBed(
 		10'd13  : answer = 32'd4     ;
 		10'd14  : answer = 32'd5     ;
 		10'd15  : answer = 32'd5     ;
-		10'd16  : answer = 32'd6     ;
-		10'd17  : answer = 32'd7     ;
-		10'd18  : answer = 32'd8     ;
-		10'd19  : answer = 32'd9     ;
-		10'd20  : answer = 32'd10    ;
-		10'd21  : answer = 32'd13    ;
-		10'd22  : answer = 32'd14    ;
-		10'd23  : answer = 32'd15    ;
-		10'd24  : answer = 32'd21    ;
-		10'd25  : answer = 32'd22    ;
-		10'd26  : answer = 32'd23    ;
-		10'd27  : answer = 32'd34    ;
-		10'd28  : answer = 32'd35    ;
-		10'd29  : answer = 32'd36    ;
-		10'd30  : answer = 32'd55    ;
-		10'd31  : answer = 32'd56    ;
-		10'd32  : answer = 32'd57    ;
-		10'd33  : answer = 32'd89    ;
-		10'd34  : answer = 32'd90    ;
-		10'd35  : answer = 32'd91    ;
-		10'd36  : answer = 32'd144   ;
-		10'd37  : answer = 32'd145   ;
-		10'd38  : answer = 32'd146   ;
-		10'd39  : answer = 32'd233   ;
-		10'd40  : answer = 32'd234   ;
-		10'd41  : answer = 32'd235   ;
-		10'd42  : answer = 32'd377   ;
-		10'd43  : answer = 32'd378   ;
-		10'd44  : answer = 32'd379   ;
-		10'd45  : answer = 32'd610   ;
-		10'd46  : answer = 32'd611   ;
-		10'd47  : answer = 32'd612   ;
-		10'd48  : answer = 32'd987   ;
-		10'd49  : answer = 32'd988   ;
-		10'd50  : answer = 32'd989   ;
-		10'd51  : answer = 32'd1597  ;
-		10'd52  : answer = 32'd1598  ;
-		10'd53  : answer = 32'd1599  ;
-		10'd54  : answer = 32'd2584  ;
-		10'd55  : answer = 32'd2585  ;
-		10'd56  : answer = 32'd2586  ;
-		10'd57  : answer = 32'd4181  ;
-		10'd58  : answer = 32'd4182  ;
-		10'd59  : answer = 32'd4183  ;
-		10'd60  : answer = 32'd4183  ;
-		10'd61  : answer = 32'd4182  ;
-		10'd62  : answer = 32'd4181  ;
-		10'd63  : answer = 32'd2586  ;
-		10'd64  : answer = 32'd2585  ;
-		10'd65  : answer = 32'd2584  ;
-		10'd66  : answer = 32'd1599  ;
-		10'd67  : answer = 32'd1598  ;
-		10'd68  : answer = 32'd1597  ;
-		10'd69  : answer = 32'd989   ;
-		10'd70  : answer = 32'd988   ;
-		10'd71  : answer = 32'd987   ;
-		10'd72  : answer = 32'd612   ;
-		10'd73  : answer = 32'd611   ;
-		10'd74  : answer = 32'd610   ;
-		10'd75  : answer = 32'd379   ;
-		10'd76  : answer = 32'd378   ;
-		10'd77  : answer = 32'd377   ;
-		10'd78  : answer = 32'd235   ;
-		10'd79  : answer = 32'd234   ;
-		10'd80  : answer = 32'd233   ;
-		10'd81  : answer = 32'd146   ;
-		10'd82  : answer = 32'd145   ;
-		10'd83  : answer = 32'd144   ;
-		10'd84  : answer = 32'd91    ;
-		10'd85  : answer = 32'd90    ;
-		10'd86  : answer = 32'd89    ;
-		10'd87  : answer = 32'd57    ;
-		10'd88  : answer = 32'd56    ;
-		10'd89  : answer = 32'd55    ;
-		10'd90  : answer = 32'd36    ;
-		10'd91  : answer = 32'd35    ;
-		10'd92  : answer = 32'd34    ;
-		10'd93  : answer = 32'd23    ;
-		10'd94  : answer = 32'd22    ;
-		10'd95  : answer = 32'd21    ;
-		10'd96  : answer = 32'd15    ;
-		10'd97  : answer = 32'd14    ;
-		10'd98  : answer = 32'd13    ;
-		10'd99  : answer = 32'd10    ;
-		10'd100 : answer = 32'd9     ;
-		10'd101 : answer = 32'd8     ;
-		10'd102 : answer = 32'd7     ;
-		10'd103 : answer = 32'd6     ;
-		10'd104 : answer = 32'd5     ;
-		10'd105 : answer = 32'd5     ;
-		10'd106 : answer = 32'd4     ;
-		10'd107 : answer = 32'd4     ;
-		10'd108 : answer = 32'd3     ;
-		10'd109 : answer = 32'd3     ;
-		10'd110 : answer = 32'd3     ;
-		10'd111 : answer = 32'd3     ;
-		10'd112 : answer = 32'd2     ;
-		10'd113 : answer = 32'd2     ;
-		10'd114 : answer = 32'd2     ;
-		10'd115 : answer = 32'd2     ;
-		10'd116 : answer = 32'd1     ;
-		10'd117 : answer = 32'd1     ;
-		10'd118 : answer = 32'd1     ;
-		10'd119 : answer = 32'd0     ;
-		10'd120 : answer = `EndSymbol;
+		10'd16  : answer = 32'd4     ;
+		10'd17  : answer = 32'd4     ;
+		10'd18  : answer = 32'd3     ;
+		10'd19  : answer = 32'd3     ;
+		10'd20  : answer = 32'd3     ;
+		10'd21  : answer = 32'd3     ;
+		10'd22  : answer = 32'd2     ;
+		10'd23  : answer = 32'd2     ;
+		10'd24  : answer = 32'd2     ;
+		10'd25  : answer = 32'd2     ;
+		10'd26  : answer = 32'd1     ;
+		10'd27  : answer = 32'd1     ;
+		10'd28  : answer = 32'd1     ;
+		10'd29  : answer = 32'd0     ;
+		10'd30  : answer = `EndSymbol;
 		endcase
 	end
 endmodule
