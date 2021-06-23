@@ -306,8 +306,6 @@
 
 	endmodule
 
-//================= Icache ============================
-
 //================= Dcache ============================
 	module Dcache(
 		clk,
@@ -345,70 +343,38 @@
 	//==== wire/reg definition ================================
 		
 	parameter STATE_compare_tag = 2'b00;
-	parameter STATE_write_back = 2'b01;
 	parameter STATE_allocate = 2'b10;
 	parameter STATE_idle = 2'b11;
 
 	integer i;
 
-	reg [156:0] cache0 [0:3]; // "1" bit lru, "1" bit valid, "1"bit dirty, "26" bits tags, "128" bits data. =157 bits
-	reg [156:0] cache1 [0:3]; // "1" bit lru, "1" bit valid, "1"bit dirty, "26" bits tags, "128" bits data. =157 bits
-	reg [156:0] nxt_cache0 [0:3]; // "1" bit lru, "1" bit valid, "1"bit dirty, "26" bits tags, "128" bits data. =157 bits
-	reg [156:0] nxt_cache1 [0:3]; // "1" bit lru, "1" bit valid, "1"bit dirty, "26" bits tags, "128" bits data. =157 bits
-	reg [31:0] data0,data1;
+	reg [155:0] cache0 [0:3]; // "1" bit lru, "1" bit valid, "26" bits tags, "128" bits data. =157 bits
+	reg [155:0] cache1 [0:3]; // "1" bit lru, "1" bit valid, "26" bits tags, "128" bits data. =157 bits
+	reg [155:0] nxt_cache0 [0:3]; // "1" bit lru, "1" bit valid, "26" bits tags, "128" bits data. =157 bits
+	reg [155:0] nxt_cache1 [0:3]; // "1" bit lru, "1" bit valid, "26" bits tags, "128" bits data. =157 bits
+	reg[31:0] data0, data1;
+	reg [6:0] offset;
 
 	reg [1:0] state;
 	reg [1:0] nxt_state;
 
-	reg[6:0] offset;
-
-	wire lru0; //0 first priority
-	wire lru1;
-	wire dirty;
-	wire dirty0;
-	wire dirty1;
 	wire miss;
 	wire miss0;
 	wire miss1;
 
 	//assign sets = proc_addr[3:2];
-	assign lru0 = cache0[proc_addr[3:2]][156];
-	assign lru1 = cache1[proc_addr[3:2]][156];
-	assign dirty0 = cache0[proc_addr[3:2]][154];
-	assign dirty1 = cache1[proc_addr[3:2]][154];
-	assign miss0 = !( cache0[proc_addr[3:2]][155] & (cache0[proc_addr[3:2]][153:128] == proc_addr[29:4]));
-	assign miss1 = !( cache1[proc_addr[3:2]][155] & (cache1[proc_addr[3:2]][153:128] == proc_addr[29:4]));
-	assign dirty = cache0[proc_addr[3:2]][154] | cache1[proc_addr[3:2]][154];  // dirty0 | dirty1
-	assign miss = (proc_read|proc_write) & miss0 & miss1;  // == hit1 | hit2
-
+	assign miss0 = !( cache0[proc_addr[3:2]][154] & (cache0[proc_addr[3:2]][153:128] == proc_addr[29:4]));
+	assign miss1 = !( cache1[proc_addr[3:2]][154] & (cache1[proc_addr[3:2]][153:128] == proc_addr[29:4]));
+	//modify
+	assign miss = (proc_read) & miss0 & miss1;  // == hit1 | hit2
+	
 	//==== combinational circuit ==============================
 
 	always @(*)begin
 		case(state)
 			STATE_compare_tag:begin
-				if (miss & !dirty)begin //clean
+				if (miss)begin //clean
 					nxt_state = STATE_allocate;
-				end
-
-				else if (miss & !dirty0 ) begin //is miss and first row!dirty
-					if (!lru0)begin             
-						nxt_state = STATE_allocate;
-					end
-					else begin                  
-						nxt_state = STATE_write_back;
-					end
-				end
-
-				else if (miss & !dirty1 ) begin //is miss and dirty
-					if (!lru1)begin
-						nxt_state = STATE_allocate;
-					end
-					else begin
-						nxt_state = STATE_write_back;
-					end
-				end
-				else if (miss & dirty)begin
-					nxt_state = STATE_write_back;
 				end
 				else begin
 					nxt_state = STATE_compare_tag;
@@ -424,17 +390,11 @@
 				end
 			end
 
-			STATE_write_back:begin
-				if (mem_ready)begin
-					nxt_state = STATE_allocate;
-				end
-				else begin
-					nxt_state = STATE_write_back;
-				end
-			end
-
 			STATE_idle:begin
 				nxt_state = STATE_compare_tag;
+			end
+			default:begin
+				nxt_state= state;
 			end
 		endcase
 	end
@@ -449,6 +409,8 @@
 		mem_addr  = 0;
 		mem_read = 0;
 		mem_write = 0;
+		proc_stall = 0;
+		
 		case(proc_addr[1:0])
 			2'b00:begin offset=7'd31; data0=cache0[proc_addr[3:2]][31:0]; data1=cache1[proc_addr[3:2]][31:0];end
 			2'b01:begin offset=7'd63; data0=cache0[proc_addr[3:2]][63:32]; data1=cache1[proc_addr[3:2]][63:32];end
@@ -472,14 +434,12 @@
 					if (!miss0)begin
 						nxt_cache0[proc_addr[3:2]][ offset -: 32] = proc_wdata;
 						nxt_cache0[proc_addr[3:2]][153:128] = proc_addr[29:4]; //tags
-						nxt_cache0[proc_addr[3:2]][154] = 1; //dirty
-						nxt_cache0[proc_addr[3:2]][155] = 1; //valid
+						nxt_cache0[proc_addr[3:2]][154] = 1; //valid
 					end
 					else begin
 						nxt_cache1[proc_addr[3:2]][ offset -: 32] = proc_wdata;
 						nxt_cache1[proc_addr[3:2]][153:128] = proc_addr[29:4]; //tags
-						nxt_cache1[proc_addr[3:2]][154] = 1; //dirty
-						nxt_cache1[proc_addr[3:2]][155] = 1; //valid
+						nxt_cache1[proc_addr[3:2]][154] = 1; //valid
 					end
 				end         
 			end
@@ -490,66 +450,23 @@
 
 				if (mem_ready)begin
 					mem_read = 0;
-					if (!cache0[proc_addr[3:2]][156])begin
+					if (!cache0[proc_addr[3:2]][155])begin
 						nxt_cache0[proc_addr[3:2]][127:0] = mem_rdata; //data
 						nxt_cache0[proc_addr[3:2]][153:128] = proc_addr[29:4]; //tags
-						nxt_cache0[proc_addr[3:2]][154] = 0; //dirty
-						nxt_cache0[proc_addr[3:2]][155] = 1; //valid
-						nxt_cache0[proc_addr[3:2]][156] = 1;  //lru0;
-						nxt_cache1[proc_addr[3:2]][156] = 0;  //lru1;
+						nxt_cache0[proc_addr[3:2]][154] = 1; //valid
+						nxt_cache0[proc_addr[3:2]][155] = 1;  //lru0;
+						nxt_cache1[proc_addr[3:2]][155] = 0;  //lru1;
 					end
 					else begin
 						nxt_cache1[proc_addr[3:2]][127:0] = mem_rdata; //data
 						nxt_cache1[proc_addr[3:2]][153:128] = proc_addr[29:4]; //tags
-						nxt_cache1[proc_addr[3:2]][154] = 0; //dirty
-						nxt_cache1[proc_addr[3:2]][155] = 1; //valid
-						nxt_cache0[proc_addr[3:2]][156] = 0;  //lru0;
-						nxt_cache1[proc_addr[3:2]][156] = 1;  //lru1;
+						nxt_cache1[proc_addr[3:2]][154] = 1; //valid
+						nxt_cache0[proc_addr[3:2]][155] = 0;  //lru0;
+						nxt_cache1[proc_addr[3:2]][155] = 1;  //lru1;
 					end
 				end
 				else begin
 					mem_read = 1;
-				end
-			end
-
-			STATE_write_back:begin
-				proc_stall = 1;
-
-				if (!cache0[proc_addr[3:2]][156])begin
-					mem_wdata = cache0[proc_addr[3:2]][127:0];
-					mem_addr  = { cache0[proc_addr[3:2]][153:128] , proc_addr[3:2] }; 
-					if (mem_ready)begin
-						nxt_cache0[proc_addr[3:2]][155] = 1; //valid
-						nxt_cache0[proc_addr[3:2]][154] = 0; //dirty
-						nxt_cache0[proc_addr[3:2]][156] = 0;  //lru0; don't change
-						nxt_cache1[proc_addr[3:2]][156] = 1;  //lru1;
-						mem_read = 0;
-						mem_write = 0;
-					end
-					else begin
-						nxt_cache0[proc_addr[3:2]][155] = 1; //valid
-						nxt_cache0[proc_addr[3:2]][154] = 1; //dirty
-						mem_read = 0;
-						mem_write = 1 ;
-					end
-				end
-				else begin
-					mem_wdata = cache1[proc_addr[3:2]][127:0];
-					mem_addr  = { cache1[proc_addr[3:2]][153:128] , proc_addr[3:2] }; 
-					if (mem_ready)begin
-						nxt_cache1[proc_addr[3:2]][155] = 1; //valid
-						nxt_cache1[proc_addr[3:2]][154] = 0; //dirty
-						nxt_cache0[proc_addr[3:2]][156] = 1;  //lru0;
-						nxt_cache1[proc_addr[3:2]][156] = 0;  //lru1;
-						mem_read = 0;
-						mem_write = 0;
-					end
-					else begin
-						nxt_cache1[proc_addr[3:2]][155] = 1; //valid
-						nxt_cache1[proc_addr[3:2]][154] = 1; //dirty
-						mem_read = 0;
-						mem_write = 1 ;
-					end
 				end
 			end
 
@@ -564,13 +481,13 @@
 	always@( posedge clk ) begin
 		if( proc_reset ) begin
 			for (i = 0 ; i < 4 ; i=i+1)begin
-				cache0[i] <=  { 1'b0 , 1'b1, {155{1'b0}} };
-				cache1[i] <=  { 1'b0 , 1'b1, {155{1'b0}} };
+				cache0[i] <=  { 1'b0 , 1'b1, {154{1'b0}} };
+				cache1[i] <=  { 1'b0 , 1'b1, {154{1'b0}} };
 			end
 			state <= STATE_idle;
 		end
 		else begin
-			for (i = 0; i < 4; i=i+1)begin
+			for (i = 0; i<4; i=i+1)begin
 				cache0[i] <= nxt_cache0[i];
 				cache1[i] <= nxt_cache1[i];
 			end
@@ -580,22 +497,19 @@
 
 	endmodule
 
-//================= Dcache ============================
 
 //=========== CHIP =================
 module RISCV_Pipeline(
 	clk, rst_n, ICACHE_ren, ICACHE_wen, ICACHE_addr, ICACHE_wdata, ICACHE_stall, ICACHE_rdata,
 				DCACHE_ren, DCACHE_wen, DCACHE_addr, DCACHE_wdata, DCACHE_stall, DCACHE_rdata
 );
-//==== input/output definition ============================
+//=========  input/output definition ============================
 	input clk, rst_n;
 	input ICACHE_stall, DCACHE_stall;
 	input [31:0] ICACHE_rdata, DCACHE_rdata;
 	output reg ICACHE_ren, ICACHE_wen, DCACHE_ren, DCACHE_wen;
 	output reg [29:0] ICACHE_addr, DCACHE_addr;
 	output reg [31:0] ICACHE_wdata, DCACHE_wdata;
-
-//==== input/output definition ============================
 
 	integer i;
 //========= PC =========
@@ -605,8 +519,6 @@ module RISCV_Pipeline(
 	reg [31:0] PC_B_ID, PC_jalr_ID;
 	reg [31:0] PC_FA_j;
 	reg PC_start;
-//========= PC =========
-
 
 //========= Registers ========= 
 	reg [31:0] register [0:31];
@@ -636,7 +548,6 @@ module RISCV_Pipeline(
 
 	reg [31:0] compare_rs1;
 	reg [31:0] compare_rs2;
-//========= Registers ========= 
 
 //========= Instruction ========= 
 	wire [31:0] inst_IF;
@@ -644,13 +555,10 @@ module RISCV_Pipeline(
 	wire [6:0] op;
 	wire [2:0] func3;
 	wire [6:0] func7;
-//========= Instruction ========= 
-
 
 //========= Immediate =========
 	reg [31:0] imme_ID;
 	reg [31:0] imme_EX;
-//========= Immediate =========
 
 //========= alu ========= 
 	reg signed [31:0] alu_in1;
@@ -661,8 +569,6 @@ module RISCV_Pipeline(
 	reg signed [31:0] alu_out_WB;
 	reg [3:0]	alu_ctrl_ID;
 	reg [3:0]	alu_ctrl_EX;
-//========= alu ========= 
-
 
 //========= memory ========= 
 	reg [31:0] read_data_MEM; //read from mem
@@ -670,7 +576,6 @@ module RISCV_Pipeline(
 
 	reg [31:0] wdata_EX; //write mem
 	reg [31:0] wdata_MEM;
-//========= memory ========= 
 
 //========= Control unit =========
 	reg ctrl_jalr_ID,		ctrl_jalr_EX; 	//PC+4 at EX
@@ -689,8 +594,6 @@ module RISCV_Pipeline(
 	reg ctrl_lw_stall;
 
 	reg ctrl_bj_taken;
-//========= Control unit =========
-
 
 //========= wire & reg ==============
 	reg	[2:0]	type;
@@ -699,7 +602,6 @@ module RISCV_Pipeline(
 	parameter S_type = 3'd1;
 	parameter B_type = 3'd3;
 	parameter J_type = 3'd6;
-//========= wire & reg ==============
 
 //========= Wire assignment ==========
 	//assign inst_IF = (ctrl_bj_taken|ctrl_jalr_ID)? 32'h00000013:{ICACHE_rdata[7:0],ICACHE_rdata[15:8],ICACHE_rdata[23:16],ICACHE_rdata[31:24]};
@@ -714,18 +616,15 @@ module RISCV_Pipeline(
 
 	assign rs1_data_ID = register[rs1_ID];
 	assign rs2_data_ID = register[rs2_ID];
-//========= Wire assignment ==========
 
-
-//========== type =============
+//========= type =============
 	always @(*)begin
 		type[2] = op[3];
 		type[1] = ( (!op[6])&(!op[5])) | (op[6]&op[5]) ;
 		type[0] = op[5] & (!op[4] & !op[2] );
 	end
-//========== type =============
 
-//========== decode =============
+//========= decode =============
 	always @(*)begin
 		//default
 		imme_ID = 0;
@@ -765,7 +664,7 @@ module RISCV_Pipeline(
 		B_type: begin
 			ctrl_beq_ID = !func3[0];
 			ctrl_bne_ID = func3[0];
-			ctrl_ALUSrc_ID = 1;			
+			ctrl_ALUSrc_ID = 0;			
 			imme_ID = { {20{inst_ID[31]}}, inst_ID[7], inst_ID[30:25], inst_ID[11:8], 1'b0 }; //beq, bne
 		end
 
@@ -789,21 +688,18 @@ module RISCV_Pipeline(
 		end
 		endcase
 	end
-//========== decode =============
 
 
-//======== alu_ctrl ========
+//========= alu_ctrl ========
 	always @(*)begin
 		alu_ctrl_ID[3] = !func3[1] & func3[0];
 		alu_ctrl_ID[2] = (func3[2] & func3[0]) | (!func3[2] & func3[1] & op[4]);
 		alu_ctrl_ID[1] = func3[2];
-		alu_ctrl_ID[0] = (func7[5] & func3[2] & !func3[1] & func3[0]) | (func3[2]&func3[1]) | (func7[5] & !func3[2]  & op[5] );
+		//alu_ctrl_ID[0] = (func7[5] & func3[2] & !func3[1] & func3[0]) | (func3[2]&func3[1]) | (func7[5] & !func3[2]  & op[5] );
 		alu_ctrl_ID[0] = ( (func7[5] & !func3[1]) & ((func3[2]&func3[0]) | op[5]) )  | (func3[2]&func3[1]);
 	end
-//======== alu_ctrl ========
 
-
-//======== mux & comb ckt ========
+//========= mux & comb ckt ========
 	always @(*)begin
 
 		//Dmem_read		(wen, addr, data)
@@ -815,14 +711,13 @@ module RISCV_Pipeline(
 
 		//Dmem_write	(wen, addr, data)
 		DCACHE_wen = ctrl_memwrite_MEM;
-		case(ctrl_FB) //genaral case，sw may be forwarded
-			2'b00: wdata_EX = rs2_data_EX; 
-			//2'b01: wdata_EX = rd_w_MEM_real; 
-			2'b01: wdata_EX = rd_w_MEM; 
-			2'b10: wdata_EX = rd_w_WB; 
-			default:wdata_EX = rs2_data_EX; 
-		endcase
-		//wdata_EX = rs2_data_EX; //This is ok
+		// case(ctrl_FB) //genaral case，sw may be forwarded
+		// 	2'b00: wdata_EX = rs2_data_EX; 
+		// 	2'b01: wdata_EX = rd_w_MEM_real; 
+		// 	2'b10: wdata_EX = rd_w_WB; 
+		// 	default:wdata_EX = rs2_data_EX; 
+		// endcase
+		wdata_EX = rs2_data_EX; //This is ok
 		DCACHE_wdata = {wdata_MEM[7:0],wdata_MEM[15:8],wdata_MEM[23:16],wdata_MEM[31:24]};
 
 		//Icache
@@ -880,26 +775,24 @@ module RISCV_Pipeline(
 		endcase
 		//compare_rs1 = rd_w_EX;
 		
-		case(ctrl_FB_j) //in fact, usdless
-			2'b00: compare_rs2 = rs2_data_ID;
-			//2'b01: compare_rs2 = rd_w_EX;
-			2'b10: compare_rs2 = rd_w_MEM;
-			default: compare_rs2 = rs2_data_ID;
-		endcase
-		//compare_rs2 = rs2_data_ID;
+		// case(ctrl_FB_j) //in fact, usdless
+		// 	2'b00: compare_rs2 = rs2_data_ID;
+		// 	2'b01: compare_rs2 = rd_w_EX;
+		// 	2'b10: compare_rs2 = rd_w_MEM;
+		// 	default: compare_rs2 = rs2_data_ID;
+		// endcase
+		compare_rs2 = rs2_data_ID;
 
 		//PC_nxt, branch,jal or jalr or pc+4
 		PC_B_ID = PC_ID + imme_ID;
 
-		//ctrl_bj_taken = ( ((ctrl_beq_ID & compare_rs1==compare_rs2) | ctrl_bne_ID & (compare_rs1!=compare_rs2)) | ctrl_jal_ID);
-		ctrl_bj_taken = !ctrl_lw_stall & ( ((ctrl_beq_ID & compare_rs1==compare_rs2) | ctrl_bne_ID & (compare_rs1!=compare_rs2)) | ctrl_jal_ID);
+		ctrl_bj_taken = ( ((ctrl_beq_ID & compare_rs1==compare_rs2) | ctrl_bne_ID & (compare_rs1!=compare_rs2)) | ctrl_jal_ID);
 
 		//PC_nxt = ctrl_jalr_ID? PC_jalr_ID : ctrl_bj_taken? PC_B_ID : PC+4; //rs1+imme or pc+imme or pc+4;
 		PC_nxt = ctrl_bj_taken? PC_B_ID : ctrl_jalr_ID? PC_jalr_ID : PC+4;
 	end
-//======== mux & comb ckt ========
 
-//comb write register
+//========= comb write register ========
 	always @(*)begin
 		write_rd_WB =  ctrl_memtoreg_WB? read_data_WB : rd_w_WB;
 		register[0] = 0;
@@ -912,7 +805,6 @@ module RISCV_Pipeline(
 			register_save_nxt[i] = register[i];
 		end
 	end
-//comb write register
 
 //========= hazard ===========
 	always @(*)begin
@@ -929,15 +821,15 @@ module RISCV_Pipeline(
 		end
 
 		//rs2 at ID, for jalr
-		if ( (ctrl_beq_ID|ctrl_bne_ID) & ctrl_regwrite_EX & rd_EX!=0 & rd_EX==rs2_ID)begin //EX
-			ctrl_FB_j = 2'b01;  
-		end
-		else if ( (ctrl_beq_ID|ctrl_bne_ID) & ctrl_regwrite_MEM & rd_MEM!=0 & rd_MEM==rs2_ID)begin //MEM
-			ctrl_FB_j = 2'b10;  
-		end
-		else begin
-			ctrl_FB_j = 2'b00;
-		end
+		// if ( (ctrl_beq_ID|ctrl_bne_ID) & ctrl_regwrite_EX & rd_EX!=0 & rd_EX==rs2_ID)begin //EX
+		// 	ctrl_FB_j = 2'b01;  
+		// end
+		// else if ( (ctrl_beq_ID|ctrl_bne_ID) & ctrl_regwrite_MEM & rd_MEM!=0 & rd_MEM==rs2_ID)begin //MEM
+		// 	ctrl_FB_j = 2'b10;  
+		// end
+		// else begin
+		// 	ctrl_FB_j = 2'b00;
+		// end
 
 		//(rs1 at EX)
 		if (ctrl_regwrite_MEM & rd_MEM!=0 & rd_MEM==rs1_EX)begin
@@ -963,20 +855,7 @@ module RISCV_Pipeline(
 
 		//load use hazard
 		//ctrl_lw_stall = (ctrl_memread_EX & (rd_EX==rs1_ID | rd_EX==rs2_ID));
-		ctrl_lw_stall = (ctrl_memread_EX & (rd_EX==rs1_ID | rd_EX==rs2_ID)) | ctrl_FA_j==2'b01 | ctrl_FB_j==2'b01;	
-	end
-//========= hazard ===========
-
-	reg test,waste;
-	reg [10:0]count, count_nxt;
-	always @(*)begin
-		test = (ctrl_FA_j==2'b01) | (ctrl_FB_j==2'b01);
-		waste = (inst_IF == 32'h00000013) | ctrl_lw_stall | ICACHE_stall | DCACHE_stall;
-		count_nxt = waste? count+1:count;
-	end
-	always @(posedge clk)begin
-		if (!rst_n) count<= 0;
-		else count<=count_nxt;
+		ctrl_lw_stall = (ctrl_memread_EX & (rd_EX==rs1_ID | rd_EX==rs2_ID)) | (!ctrl_FA_j[1]&ctrl_FA_j[0]);	
 	end
 
 //========= seq ===========
@@ -1161,11 +1040,9 @@ module RISCV_Pipeline(
 			PC_EX <= PC_EX;
 			PC <= PC;
 			PC_start <= PC_start;
+			
 		end
 	end
 
 endmodule
-//========= seq ===========
-
-
 //=========== CHIP =================
