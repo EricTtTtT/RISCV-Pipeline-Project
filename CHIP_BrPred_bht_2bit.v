@@ -965,16 +965,28 @@ module RISCV_Pipeline(
 //============= FSM ======================
 
 
+
+//============= BHT =======================
 reg bht[0:3], bht_nxt[0:3]; //4 block, taken = 1, not taken = 0
 reg [1:0] back, back_nxt;
-reg last_pred, last_pred_nxt;
 reg look ;
+
+reg count[0:3];
+reg count_nxt[0:3];
+
 always @(*)begin
 	for (i=0;i<4;i=i+1)bht_nxt[i] = bht[i];
+	for (i=0;i<4;i=i+1)count_nxt[i] = count[i];
 
 	back_nxt = !ctrl_lw_stall & (ctrl_beq_ID|ctrl_bne_ID)? {back[0], taken} : back;
-	bht_nxt[back] = !ctrl_lw_stall & (ctrl_beq_ID|ctrl_bne_ID)? taken : bht[back];
 
+	//984:2bit, 985:1bit
+	//bht_nxt[back] = !ctrl_lw_stall & (ctrl_beq_ID|ctrl_bne_ID)? (count[back]==1'b1)? taken : bht[back] : bht[back];
+	bht_nxt[back] = !ctrl_lw_stall & (ctrl_beq_ID|ctrl_bne_ID)? taken : bht[back];
+	
+	count_nxt[back] = !ctrl_lw_stall & (ctrl_beq_ID|ctrl_bne_ID)&(bht[back]!=taken)?  1'b1 :
+					!ctrl_lw_stall & (ctrl_beq_ID|ctrl_bne_ID)&(bht[back]==taken)? 1'b0 :
+					count[back];
 end
 
 wire wrong;
@@ -987,22 +999,10 @@ always @(*)begin
 	inst_IF = !PC_start? 32'h00000013 : (ctrl_jal_ID|ctrl_jalr_ID)? 32'h00000013 :
 			(ctrl_beq_ID|ctrl_bne_ID)? (bht[back]!=taken)? taken? 32'h00000013:32'h00000013:{ICACHE_rdata[7:0],ICACHE_rdata[15:8],ICACHE_rdata[23:16],ICACHE_rdata[31:24]} : {ICACHE_rdata[7:0],ICACHE_rdata[15:8],ICACHE_rdata[23:16],ICACHE_rdata[31:24]};
 end
+//============= BHT =======================
 
 
 
-
-//============= PC_nxt, inst_IF ======================
-	// always @(*) begin
-	// 	if ((state==state_t1)|(state==state_t2))begin
-	// 		PC_nxt = ctrl_jalr_ID? PC_jalr_ID : ctrl_jal_ID? PC_B_ID : (ctrl_beq_IF|ctrl_bne_IF)? PC_B_IF : ((ctrl_beq_ID|ctrl_bne_ID)&!taken)? PC_B : PC+4;
-	// 		inst_IF = !PC_start? 32'h00000013 : ( ((ctrl_beq_ID|ctrl_bne_ID)&!taken) |ctrl_jal_ID|ctrl_jalr_ID)? 32'h00000013 : {ICACHE_rdata[7:0],ICACHE_rdata[15:8],ICACHE_rdata[23:16],ICACHE_rdata[31:24]};
-	// 	end
-	// 	else begin
-	// 		PC_nxt = ctrl_jalr_ID? PC_jalr_ID : ctrl_jal_ID? PC_B_ID : ((ctrl_beq_ID|ctrl_bne_ID)&taken)? PC_B_ID : PC+4;
-	// 		inst_IF = !PC_start? 32'h00000013 : ( ((ctrl_beq_ID|ctrl_bne_ID)&taken) |ctrl_jal_ID|ctrl_jalr_ID)? 32'h00000013 : {ICACHE_rdata[7:0],ICACHE_rdata[15:8],ICACHE_rdata[23:16],ICACHE_rdata[31:24]};
-	// 	end		
-	// end
-//============= PC_nxt, inst_IF ======================
 
 //============= comb write register ==============
 	always @(*)begin
@@ -1138,8 +1138,8 @@ end
 			state <= state_nt1;
 
 			for (i=0;i<4;i=i+1) bht[i] <= 0;
+			for (i=0;i<4;i=i+1) count[i] <= 0;
 			back <= 0;
-			last_pred <= 0;
 
 		end
 		else if (!ICACHE_stall & !DCACHE_stall ) begin
@@ -1212,8 +1212,8 @@ end
 			state <= nxt_state;
 
 			for (i=0;i<4;i=i+1) bht[i] <= bht_nxt[i];
+			for (i=0;i<4;i=i+1) count[i] <= count_nxt[i];
 			back <= back_nxt;
-			last_pred <= last_pred_nxt;
 		end
 		//============ stall ================
 		else begin 
@@ -1280,8 +1280,8 @@ end
 			state <= state;
 
 			for (i=0;i<4;i=i+1) bht[i] <= bht[i];
+			for (i=0;i<4;i=i+1) count[i] <= count[i];
 			back <= back;
-			last_pred <= last_pred;
 		end
 	end
 
