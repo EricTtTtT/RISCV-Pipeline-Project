@@ -964,27 +964,27 @@ module RISCV_Pipeline(
 	end
 //============= FSM ======================
 
+//============= BHT ======================
+	reg bht[0:3], bht_nxt[0:3]; //4 block, taken = 1, not taken = 0
+	reg [1:0] back, back_nxt;
+	reg last_pred, last_pred_nxt;
+	reg look ;
+	always @(*)begin
+		for (i=0;i<4;i=i+1)bht_nxt[i] = bht[i];
+		back_nxt = !ctrl_lw_stall & (ctrl_beq_ID|ctrl_bne_ID)? {back[0], taken} : back;
+		bht_nxt[back] = !ctrl_lw_stall & (ctrl_beq_ID|ctrl_bne_ID)? taken : bht[back];
+		last_pred_nxt = bht[back];
+		look = bht[back];
+	end
 
-reg bht[0:3], bht_nxt[0:3]; //4 block, taken = 1, not taken = 0
-reg [1:0] back, back_nxt;
-reg last_pred, last_pred_nxt;
-reg look ;
-always @(*)begin
-	for (i=0;i<4;i=i+1)bht_nxt[i] = bht[i];
-	back_nxt = !ctrl_lw_stall & (ctrl_beq_ID|ctrl_bne_ID)? {back[0], taken} : back;
-	bht_nxt[back] = !ctrl_lw_stall & (ctrl_beq_ID|ctrl_bne_ID)? taken : bht[back];
-	last_pred_nxt = bht[back];
-	look = bht[back];
-end
-
-always @(*)begin
-	PC_nxt = ctrl_jalr_ID? PC_jalr_ID : ctrl_jal_ID? PC_B_ID : 
-			(ctrl_beq_IF|ctrl_bne_IF)? bht[back_nxt]? PC_B_IF: PC+4 :  (ctrl_beq_ID|ctrl_bne_ID)? (bht[back]!=bht_nxt[back])? taken? PC_B_ID : PC_B : PC+4 : PC+4;
-	
-	inst_IF = !PC_start? 32'h00000013 : (ctrl_jal_ID|ctrl_jalr_ID)? 32'h00000013 :
-			(ctrl_beq_ID|ctrl_bne_ID)? (bht[back]!=bht_nxt[back])? taken? 32'h00000013:32'h00000013:{ICACHE_rdata[7:0],ICACHE_rdata[15:8],ICACHE_rdata[23:16],ICACHE_rdata[31:24]} : {ICACHE_rdata[7:0],ICACHE_rdata[15:8],ICACHE_rdata[23:16],ICACHE_rdata[31:24]};
-end
-
+	always @(*)begin
+		PC_nxt = ctrl_jalr_ID? PC_jalr_ID : ctrl_jal_ID? PC_B_ID : 
+				(ctrl_beq_IF|ctrl_bne_IF)? bht[back_nxt]? PC_B_IF: PC+4 :  (ctrl_beq_ID|ctrl_bne_ID)? (bht[back]!=bht_nxt[back])? taken? PC_B_ID : PC_B : PC+4 : PC+4;
+		
+		inst_IF = !PC_start? 32'h00000013 : (ctrl_jal_ID|ctrl_jalr_ID)? 32'h00000013 :
+				(ctrl_beq_ID|ctrl_bne_ID)? (bht[back]!=bht_nxt[back])? taken? 32'h00000013:32'h00000013:{ICACHE_rdata[7:0],ICACHE_rdata[15:8],ICACHE_rdata[23:16],ICACHE_rdata[31:24]} : {ICACHE_rdata[7:0],ICACHE_rdata[15:8],ICACHE_rdata[23:16],ICACHE_rdata[31:24]};
+	end
+//============= BHT ======================
 
 
 
