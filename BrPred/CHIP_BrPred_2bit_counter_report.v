@@ -18,8 +18,8 @@
 	//----------for TestBed--------------				
 					DCACHE_addr, 
 					DCACHE_wdata,
-					DCACHE_wen,
-					br, wrong
+					DCACHE_wen
+                    ,br, wrong   
 				);
 	input			clk, rst_n;
 	//--------------------------
@@ -41,7 +41,7 @@
 	output	[29:0]	DCACHE_addr;
 	output	[31:0]	DCACHE_wdata;
 	output			DCACHE_wen;
-	output br, wrong;
+    output br, wrong;
 	//--------------------------
 
 	// wire declaration  
@@ -59,7 +59,6 @@
 	wire [31:0] DCACHE_wdata;
 	wire        DCACHE_stall;
 	wire [31:0] DCACHE_rdata;
-
 
 	//=========================================
 		// Note that the overall design of your RISCV includes:
@@ -85,9 +84,9 @@
 			.DCACHE_addr    (DCACHE_addr)   ,
 			.DCACHE_wdata   (DCACHE_wdata)  ,
 			.DCACHE_stall   (DCACHE_stall)  ,
-			.DCACHE_rdata   (DCACHE_rdata)	,
-			.br(br),
-			.wrong(wrong)	);
+			.DCACHE_rdata   (DCACHE_rdata)	
+            ,.br(br), .wrong(wrong)
+		);
 
 		Dcache D_cache(
 			.clk        (clk)         ,
@@ -590,7 +589,7 @@
 	module RISCV_Pipeline(
 		clk, rst_n, ICACHE_ren, ICACHE_wen, ICACHE_addr, ICACHE_wdata, ICACHE_stall, ICACHE_rdata,
 					DCACHE_ren, DCACHE_wen, DCACHE_addr, DCACHE_wdata, DCACHE_stall, DCACHE_rdata
-		, br, wrong
+                    br, wrong
 	);
 	//==== input/output definition ============================
 		input clk, rst_n;
@@ -599,11 +598,7 @@
 		output reg ICACHE_ren, ICACHE_wen, DCACHE_ren, DCACHE_wen;
 		output reg [29:0] ICACHE_addr, DCACHE_addr;
 		output reg [31:0] ICACHE_wdata, DCACHE_wdata;
-
-	output br;
-	output wrong;
-	
-
+        output br, wrong;
 
 	//==== input/output definition ============================
 
@@ -702,6 +697,7 @@
 		reg ctrl_bj_taken;
 	//========= Control unit =========
 
+
 	//========= wire & reg ==============
 		reg	[2:0]	type;
 		parameter R_type = 3'd0;
@@ -735,8 +731,6 @@
 		parameter state_nt2 = 2'b10;
 		parameter state_nt1 = 2'b11;
 	//========== state ===========
-	assign br = !(ctrl_lw_stall | ICACHE_stall) & (ctrl_beq_ID|ctrl_bne_ID);
-	assign wrong = br & (((state==state_t1)|(state==state_t2))!=taken);
 
 
 	//========== type =============
@@ -912,6 +906,7 @@
 		end
 	//======== mux & comb ckt ========
 
+    
 		always @(*)begin
 			//PC_nxt, branch,jal or jalr or pc+4
 			PC_B_ID = PC_ID + imme_ID;
@@ -932,8 +927,9 @@
 		end
 
 	
-	
-	//============= FSM ==============
+    assign br = !(ctrl_lw_stall | ICACHE_stall) & (ctrl_beq_ID|ctrl_bne_ID);
+	assign wrong = br & (((state==state_t1)|(state==state_t2))!=taken);
+    //============= FSM ======================
 		always @(*)begin
 			case (state)
 				state_t1:begin
@@ -948,7 +944,7 @@
 				state_t2:begin
 					if (!ctrl_lw_stall & (ctrl_beq_ID|ctrl_bne_ID))begin
 						if (taken)nxt_state = state_t1;
-						else nxt_state = state_nt2;
+						else nxt_state = state_nt1;
 					end
 					else begin
 						nxt_state = state;
@@ -957,7 +953,7 @@
 				state_nt2:begin
 					if (!ctrl_lw_stall & (ctrl_beq_ID|ctrl_bne_ID))begin
 						if (!taken)nxt_state = state_nt1;
-						else nxt_state = state_t2;
+						else nxt_state = state_t1;
 					end
 					else begin
 						nxt_state = state;
@@ -996,7 +992,7 @@
 
 
 
-	//============= comb write register ==================
+	//comb write register
 		always @(*)begin
 			write_rd_WB =  ctrl_memtoreg_WB? read_data_WB : rd_w_WB;
 			register[0] = 0;
@@ -1009,7 +1005,7 @@
 				register_save_nxt[i] = register[i];
 			end
 		end
-	//============= comb write register ==================
+	//comb write register
 
 	//========= hazard ===========
 		always @(*)begin
@@ -1265,24 +1261,6 @@
 
 			end
 		end
-    //========= seq ===========
-
-	//========= waste count =========================
-		reg test, waste;
-		reg [10:0] count, count_nxt;
-		always @(*) begin
-			test = (ctrl_FA_j == 2'b01);
-			waste = (inst_IF == 32'h00000013) | ctrl_lw_stall | ICACHE_stall | DCACHE_stall;
-			count_nxt = waste? count + 1: count;
-		end
-		always @(posedge clk) begin
-			if (!rst_n) begin
-				count <= 0;
-			end
-			else begin
-				count <= count_nxt;
-			end
-		end
-	//========= waste count =========================
+	//========= seq ===========
 	endmodule
 //=========== CHIP =================

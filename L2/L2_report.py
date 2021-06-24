@@ -5,13 +5,13 @@ files = ["../../L2_cache/D2w_I2w__L22w_256.txt",
         "../../L2_cache/Ddm_Idm__L22w_256.txt",
         "../../L2_cache/D2w_I2w__L2dm_256.txt",
         "../../L2_cache/Ddm_I2w__L22w_256.txt",]
-descripttions = [("2-way", "2-way", "2-way"),
+descriptions = [("2-way", "2-way", "2-way"),
                 ("dm", "dm", "dm"),
                 ("dm", "dm", "2-way"),
                 ("2-way", "2-way", "dm"),
                 ("dm", "2-way", "2-way")]
 
-for file, descript in zip(files, descripttions):
+for file, descript in zip(files, descriptions):
     duration = 0
     D_r_time, D_w_time, D_stall_cycles = 0, 0, 0
     I_r_time, I_w_time, I_stall_cycles = 0, 0, 0

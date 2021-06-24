@@ -1,18 +1,16 @@
 import sys
 
-files = ["./Br_data/output__D2w_I2w__L22w_256.txt",
-        "./Br_data/output__Ddm_Idm__L2dm_256.txt",
-        "./Br_data/output__Ddm_Idm__L22w_256.txt",
-        "./Br_data/output__D2w_I2w__L2dm_256.txt",
-        "./Br_data/output__Ddm_I2w__L22w_256.txt",]
-descriptions = ["2-bit", "1-bit", "1234"]
-# descripttions = [("2-way", "2-way", "2-way"),
+files = ["./Br_data/bht_2bit.txt",
+        "./Br_data/2bit_predictor.txt",
+        "./Br_data/2bit_counter.txt"]
+descriptions = ["bht_2bit", "2bit_predictor", "2bit_counter"]
+# descriptions = [("2-way", "2-way", "2-way"),
 #                 ("dm", "dm", "dm"),
 #                 ("dm", "dm", "2-way"),
 #                 ("2-way", "2-way", "dm"),
 #                 ("dm", "2-way", "2-way")]
 
-for file, descript in zip(files, descripttions):
+for file, descript in zip(files, descriptions):
     duration = 0
     br_times = 0
     wrong_times = 0
