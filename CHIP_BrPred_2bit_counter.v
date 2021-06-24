@@ -1051,6 +1051,20 @@
 		end
 	//========= hazard ===========
 
+	//======== waste cycle ========
+		reg test,waste;
+		reg [10:0]count, count_nxt;
+		always @(*)begin
+			test = (ctrl_FA_j==2'b01);
+			waste = (inst_IF == 32'h00000013) | ctrl_lw_stall | ICACHE_stall | DCACHE_stall;
+			count_nxt = waste? count+1:count;
+		end
+		always @(posedge clk)begin
+			if (!rst_n) count<= 0;
+			else count<=count_nxt;
+		end
+	//======== waste cycle ========
+
 	//========= seq ===========
 		always @(posedge clk )begin
 			if (!rst_n)begin
