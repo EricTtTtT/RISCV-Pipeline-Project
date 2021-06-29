@@ -589,7 +589,7 @@
 	module RISCV_Pipeline(
 		clk, rst_n, ICACHE_ren, ICACHE_wen, ICACHE_addr, ICACHE_wdata, ICACHE_stall, ICACHE_rdata,
 					DCACHE_ren, DCACHE_wen, DCACHE_addr, DCACHE_wdata, DCACHE_stall, DCACHE_rdata
-                    br, wrong
+                    , br, wrong
 	);
 	//==== input/output definition ============================
 		input clk, rst_n;

@@ -987,8 +987,8 @@ always @(*)begin
 	back_nxt = !ctrl_lw_stall & (ctrl_beq_ID|ctrl_bne_ID)? {back[0], taken} : back;
 
 	//984:2bit, 985:1bit
-	//bht_nxt[back] = !ctrl_lw_stall & (ctrl_beq_ID|ctrl_bne_ID)? (count[back]==1'b1)? taken : bht[back] : bht[back];
-	bht_nxt[back] = !ctrl_lw_stall & (ctrl_beq_ID|ctrl_bne_ID)? taken : bht[back];
+	bht_nxt[back] = !ctrl_lw_stall & (ctrl_beq_ID|ctrl_bne_ID)? (count[back]==1'b1)? taken : bht[back] : bht[back];
+	// bht_nxt[back] = !ctrl_lw_stall & (ctrl_beq_ID|ctrl_bne_ID)? taken : bht[back];
 	
 	count_nxt[back] = !ctrl_lw_stall & (ctrl_beq_ID|ctrl_bne_ID)&(bht[back]!=taken)?  1'b1 :
 					!ctrl_lw_stall & (ctrl_beq_ID|ctrl_bne_ID)&(bht[back]==taken)? 1'b0 :

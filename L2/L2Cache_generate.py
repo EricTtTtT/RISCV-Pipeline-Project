@@ -49,8 +49,7 @@ incre = args.incre
 assert(nb >= 3)
 assert(nb <= 48)
 assert(incre >= 0)
-assert(nb*incre < 1024)
-assert(nb*(incre+1)*2+1 < 1024)
+assert((nb*(incre+1)*2+1) < 1024)
 
 fib_list  = fib(nb)
 incre_list = increment(incre, fib_list)
@@ -59,7 +58,7 @@ write_list = incre_list + sort_list
 print(incre_list)
 
 TestBed_L2Cache_file = open("TestBed_L2Cache.v","w")
-with open("TestBed_L2Cache_ref.v", "r") as f:
+with open("TestBed_L2Cache_report.v", "r") as f:
     for line in f:
         if "`define CheckNum" in line:
             line = line.replace("10'd7", "10'd{:d}".format(nb*(incre+1)*2+1))
