@@ -4,7 +4,9 @@
 Copy content in the files below into CHIP.v, and run ...  
 # command
     $ncverilog Final_tb.v CHIP.v slow_memory.v +define+hasHazard +access+r  
+
     $ncverilog Final_tb.v CHIP.v slow_memory.v +define+BrPred +access+r  
+
     $ncverilog Final_tb.v CHIP.v slow_memory.v +define+compression +access+r  
 
 ## BaseLine
