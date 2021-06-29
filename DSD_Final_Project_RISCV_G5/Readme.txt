@@ -2,16 +2,17 @@ Baseline:
   CHIP.v  
 
 BrPred:
+  !!!! The Best one: BHT_1-bit !!!!
   5 cases to compare:
 
-  1. CHIP_BrPred_2bit_predictor.v : predictor v1
-  2. CHIP_BrPred_2bit_counter.v   : predictor v2
-  3. CHIP_BrPred_bht.v.           : Branch prediction table
-  4. CHIP_BrPred_bht_2bit.v       : 2-bit branch prediction table
-  5. CHIP_complete.v.             : No prediction
+  1. ./2-bit_predictor_v1/CHIP.v   : predictor v1
+  2. ./2-bit_predictor_v2/CHIP.v   : predictor v2
+  3. ./BHT_1-bit/CHIP.v            : branch history table
+  4. ./BHT_2-bit_v2/CHIP.v         : 2-bit branch prediction table
+  5. ./without_prediction/CHIP.v   : without prediction
 
 Compress:
-  CHIP_compress.v
+  CHIP.v
 
 L2_cache: X
 
