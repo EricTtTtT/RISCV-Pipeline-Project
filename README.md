@@ -2,10 +2,10 @@
 
 ## Usuage 
 Copy content in the files below into CHIP.v, and run ...  
-1. $ncverilog Final_tb.v CHIP.v slow_memory.v +define+hasHazard +access+r  
-2. $ncverilog Final_tb.v CHIP.v slow_memory.v +define+BrPred +access+r  
-3. $ncverilog Final_tb.v CHIP.v slow_memory.v +define+compression +access+r  
-
+# command
+    $ncverilog Final_tb.v CHIP.v slow_memory.v +define+hasHazard +access+r  
+    $ncverilog Final_tb.v CHIP.v slow_memory.v +define+BrPred +access+r  
+    $ncverilog Final_tb.v CHIP.v slow_memory.v +define+compression +access+r  
 
 ## BaseLine
   CHIP_hasHazard.v  
@@ -13,7 +13,7 @@ Copy content in the files below into CHIP.v, and run ...
 ## Extension  
   use CHIP_complete.v to extend  
 
-## BrPred  
+# BrPred  
 
 BrPred:  
   * three types of instructinos in testbench  
@@ -27,10 +27,10 @@ BrPred:
     d. branch hash table 2-bit  
   * use bash script to test 1000 testbenches for each predictor  
 
-Compress:  
+# Compress:  
   * CHIP_compress.v  
 
-L2_cache:  
+# L2_cache:  
   * share L2 cache of I cache and D cache  
   * try 2-way and direct-mapped cache  
   * try different size of L2 cache
