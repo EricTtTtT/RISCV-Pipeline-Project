@@ -2,13 +2,13 @@
 
 ## Usuage 
 Copy content in the files below into CHIP.v, and run ...  
-# command for baseline
+### command for baseline
     $ncverilog Final_tb.v CHIP.v slow_memory.v +define+hasHazard +access+r  
-# command for branch prediction
+### command for branch prediction
     $ncverilog Final_tb.v CHIP.v slow_memory.v +define+BrPred +access+r  
-# command for compression
+### command for compression
     $ncverilog Final_tb.v CHIP.v slow_memory.v +define+compression +access+r  
-# command for L2 cache
+### command for L2 cache
     $ncverilog Final_tb.v CHIP.v slow_memory.v +define+L2Cache +access+r  
 
 ## BaseLine
@@ -17,9 +17,7 @@ Copy content in the files below into CHIP.v, and run ...
 ## Extension  
   use CHIP_complete.v to extend  
 
-# BrPred  
-
-BrPred:  
+### BrPred:  
   * three types of instructinos in testbench  
     a. all not taken.  
     b. not taken, taken, not taken, taken...  
@@ -31,10 +29,10 @@ BrPred:
     d. branch hash table 2-bit  
   * use bash script to test 1000 testbenches for each predictor  
 
-# Compress:  
+### Compress:  
   * CHIP_compress.v  
 
-# L2_cache:  
+### L2_cache:  
   * share L2 cache of I cache and D cache  
   * try 2-way and direct-mapped cache  
   * try different size of L2 cache
