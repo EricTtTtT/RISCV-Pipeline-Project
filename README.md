@@ -1,15 +1,15 @@
 # RISCV-Pipeline-Project
 
 ## Usuage 
-Copy content in the files below into CHIP.v, and run ...  
-### command for baseline
+Need to set up environment first. e.g. source license, mv .synopsys_dc.setup 
+### baseline
     ncverilog Final_tb.v CHIP.v slow_memory.v +define+hasHazard +access+r  
-### command for branch prediction
-    ncverilog Final_tb.v CHIP.v slow_memory.v +define+BrPred +access+r  
-### command for compression
-    ncverilog Final_tb.v CHIP.v slow_memory.v +define+compression +access+r  
-### command for L2 cache
-    ncverilog Final_tb.v CHIP.v slow_memory.v +define+L2Cache +access+r  
+### branch prediction
+    ncverilog Final_tb.v CHIP_BrPred.v slow_memory.v +define+BrPred +access+r  
+### compression
+    ncverilog Final_tb.v CHIP_compression.v slow_memory.v +define+compression +access+r  
+### L2 cache
+    ncverilog Final_tb.v CHIP_L2.v slow_memory.v +define+L2Cache +access+r  
 
 ## BaseLine
   CHIP_hasHazard.v  
